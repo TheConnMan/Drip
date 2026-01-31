@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Clock, Play, ChevronDown, ChevronUp, Sparkles, Check, Loader2, Menu, MessageSquare, X } from "lucide-react";
+import { ArrowLeft, Clock, ChevronDown, ChevronUp, Sparkles, Check, Loader2, Menu, MessageSquare, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { apiRequest } from "@/lib/queryClient";
 import type { Lesson, Course, TopicExpansion } from "@shared/schema";
@@ -177,18 +177,6 @@ export default function LessonPage() {
           </div>
           <h1 className="text-2xl font-bold" data-testid="text-lesson-title">{lesson.title}</h1>
         </div>
-
-        <Card className="p-4 mb-8 flex items-center gap-4" data-testid="card-audio-player">
-          <Button size="icon" className="rounded-full w-12 h-12 flex-shrink-0" data-testid="button-play">
-            <Play className="w-5 h-5" />
-          </Button>
-          <div className="flex-1">
-            <p className="text-sm font-medium flex items-center gap-2">
-              <span>Listen to lesson</span>
-            </p>
-            <p className="text-xs text-muted-foreground">0:00 / {lesson.estimatedMinutes}:00</p>
-          </div>
-        </Card>
 
         {isGeneratingContent ? (
           <Card className="p-8 mb-8 text-center">

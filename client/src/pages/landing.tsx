@@ -26,7 +26,7 @@ export default function Landing() {
             </div>
             <h1 className="text-4xl md:text-6xl font-bold tracking-tight mb-6">
               Learn anything,{" "}
-              <span className="text-primary">one bite at a time</span>
+              <span className="text-primary">one drip at a time</span>
             </h1>
             <p className="text-lg md:text-xl text-muted-foreground mb-8 max-w-2xl mx-auto">
               Tell us what you want to learn, and our AI creates personalized micro-lessons 
@@ -34,15 +34,12 @@ export default function Landing() {
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Button size="lg" asChild data-testid="button-get-started">
-                <a href="/api/login">Get Started Free</a>
+                <a href="/api/login">Get Started</a>
               </Button>
               <Button size="lg" variant="outline" asChild data-testid="button-learn-more">
                 <a href="#features">Learn More</a>
               </Button>
             </div>
-            <p className="text-sm text-muted-foreground mt-4">
-              No credit card required
-            </p>
           </div>
         </section>
 

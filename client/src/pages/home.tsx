@@ -89,7 +89,7 @@ export default function Home() {
   const archivedCourses = courses?.filter(c => c.isArchived) || [];
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background overflow-x-hidden">
       <header className="border-b border-border/50 sticky top-0 z-50 bg-background/95 backdrop-blur-sm">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -121,7 +121,7 @@ export default function Home() {
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-8">
+      <main className="container mx-auto px-4 py-8 max-w-full">
         <section className="mb-10">
           <h2 className="text-xl font-semibold mb-4" data-testid="text-active-courses">Active Courses</h2>
           {isLoading ? (
@@ -246,15 +246,15 @@ function CourseCard({
 
   return (
     <Card 
-      className={`p-5 transition-colors ${isArchived ? 'opacity-60' : ''}`}
+      className={`p-5 transition-colors overflow-hidden ${isArchived ? 'opacity-60' : ''}`}
       data-testid={`card-course-${course.id}`}
     >
-      <div className="flex items-start justify-between gap-4">
-        <Link href={`/course/${course.id}`} className="flex-1 min-w-0 hover-elevate rounded-md -m-2 p-2">
-          <h3 className="font-semibold text-lg mb-1 truncate" data-testid={`text-course-title-${course.id}`}>
+      <div className="flex items-start justify-between gap-3 w-full">
+        <Link href={`/course/${course.id}`} className="flex-1 min-w-0 hover-elevate rounded-md -m-2 p-2 overflow-hidden">
+          <h3 className="font-semibold text-lg mb-1 break-words" data-testid={`text-course-title-${course.id}`}>
             {course.title}
           </h3>
-          <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
+          <p className="text-sm text-muted-foreground line-clamp-2 mb-3 break-words">
             {course.description}
           </p>
           <div className="flex items-center gap-3 text-sm text-muted-foreground">

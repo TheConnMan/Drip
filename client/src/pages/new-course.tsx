@@ -160,20 +160,20 @@ export default function NewCoursePage() {
           <div ref={messagesEndRef} />
         </div>
 
-        <form onSubmit={handleSubmit} className="relative">
+        <form onSubmit={handleSubmit} className="flex gap-2 items-end">
           <Textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Type your message..."
-            className="resize-none pr-12 min-h-[52px] max-h-32"
+            className="resize-none min-h-[52px] max-h-32 flex-1"
             disabled={isGenerating}
             data-testid="input-message"
           />
           <Button
             type="submit"
             size="icon"
-            className="absolute right-2 bottom-2 rounded-full"
+            className="h-[52px] w-[52px] rounded-md flex-shrink-0"
             disabled={!input.trim() || isGenerating}
             data-testid="button-send"
           >

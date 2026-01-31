@@ -263,14 +263,14 @@ But one thing is clear: AI's economic impact will be profound. Understanding the
     .returning();
 
   const climateLessons = [
-    { sessionNumber: 1, title: "Earth's Energy Balance", subtitle: "How the sun's energy powers our climate", content: "Understanding Earth's climate starts with energy...", estimatedMinutes: 5 },
-    { sessionNumber: 2, title: "The Greenhouse Effect", subtitle: "Natural warming that makes Earth habitable", content: "The greenhouse effect is often misunderstood...", estimatedMinutes: 5 },
-    { sessionNumber: 3, title: "Carbon Cycle Basics", subtitle: "How carbon moves through Earth's systems", content: "Carbon is the building block of life...", estimatedMinutes: 5 },
-    { sessionNumber: 4, title: "Ocean's Role in Climate", subtitle: "The great heat sink and carbon reservoir", content: "Oceans absorb enormous amounts of heat...", estimatedMinutes: 5 },
-    { sessionNumber: 5, title: "Ice & Albedo", subtitle: "How reflectivity affects temperature", content: "White surfaces reflect sunlight...", estimatedMinutes: 5 },
-    { sessionNumber: 6, title: "Climate Feedback Loops", subtitle: "Amplifying and dampening effects", content: "Climate feedbacks can accelerate or slow changes...", estimatedMinutes: 5 },
-    { sessionNumber: 7, title: "Evidence of Change", subtitle: "Data from ice cores, satellites, and sensors", content: "Multiple lines of evidence confirm warming...", estimatedMinutes: 5 },
-    { sessionNumber: 8, title: "Future Projections", subtitle: "Modeling what comes next", content: "Climate models simulate Earth's systems...", estimatedMinutes: 5 },
+    { sessionNumber: 1, title: "Earth's Energy Balance", subtitle: "How the sun's energy powers our climate", content: "Content will be generated when you reach this lesson.", estimatedMinutes: 5 },
+    { sessionNumber: 2, title: "The Greenhouse Effect", subtitle: "Natural warming that makes Earth habitable", content: "Content will be generated when you reach this lesson.", estimatedMinutes: 5 },
+    { sessionNumber: 3, title: "Carbon Cycle Basics", subtitle: "How carbon moves through Earth's systems", content: "Content will be generated when you reach this lesson.", estimatedMinutes: 5 },
+    { sessionNumber: 4, title: "Ocean's Role in Climate", subtitle: "The great heat sink and carbon reservoir", content: "Content will be generated when you reach this lesson.", estimatedMinutes: 5 },
+    { sessionNumber: 5, title: "Ice & Albedo", subtitle: "How reflectivity affects temperature", content: "Content will be generated when you reach this lesson.", estimatedMinutes: 5 },
+    { sessionNumber: 6, title: "Climate Feedback Loops", subtitle: "Amplifying and dampening effects", content: "Content will be generated when you reach this lesson.", estimatedMinutes: 5 },
+    { sessionNumber: 7, title: "Evidence of Change", subtitle: "Data from ice cores, satellites, and sensors", content: "Content will be generated when you reach this lesson.", estimatedMinutes: 5 },
+    { sessionNumber: 8, title: "Future Projections", subtitle: "Modeling what comes next", content: "Content will be generated when you reach this lesson.", estimatedMinutes: 5 },
   ];
 
   for (const lesson of climateLessons) {

@@ -113,3 +113,18 @@ The feedback system allows users to influence future lesson generation:
 - `@tanstack/react-query` - Client-side data fetching
 - `react-markdown` - Lesson content rendering
 - `p-limit` + `p-retry` - Batch processing utilities
+
+### PWA Support
+The app is installable as a Progressive Web App:
+- `client/public/manifest.json` - App manifest with name, icons, theme colors
+- `client/public/sw.js` - Service worker caching static assets only (not API calls)
+- `client/public/pwa-192.png` and `pwa-512.png` - App icons
+- Service worker registration in `client/index.html`
+
+To install on Android: Open in Chrome → Menu → "Add to Home Screen"
+
+### Background Lesson Pre-generation
+When a course is built, the first lesson is automatically generated in the background:
+- Course build API returns immediately after creating lessons
+- First lesson generation starts in background (fire and forget)
+- Race condition protection prevents duplicate Claude API calls

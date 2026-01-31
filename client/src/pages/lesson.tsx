@@ -16,6 +16,7 @@ interface LessonDetail extends Lesson {
   expansions: TopicExpansion[];
   isCompleted: boolean;
   nextLessonId?: number;
+  isGenerating?: boolean;
 }
 
 export default function LessonPage() {
@@ -32,6 +33,14 @@ export default function LessonPage() {
 
   const { data: lesson, isLoading } = useQuery<LessonDetail>({
     queryKey: ["/api/lessons", lessonId],
+    refetchInterval: (query) => {
+      // Poll every 2 seconds while content is generating
+      const data = query.state.data;
+      if (data?.content === "PENDING_GENERATION" || data?.isGenerating) {
+        return 2000;
+      }
+      return false;
+    },
   });
 
   const completeMutation = useMutation({

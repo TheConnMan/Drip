@@ -471,24 +471,39 @@ Just write the lesson content, no meta text or introductions.`,
       const progress = await storage.getLessonProgress(userId, lessonId);
       const nextLesson = await storage.getNextLesson(lesson.courseId, lesson.sessionNumber);
 
-      // If this lesson doesn't have content yet, generate it on-demand
-      if (lesson.content === "PENDING_GENERATION" || lesson.content === "Content will be generated when you reach this lesson.") {
-        // Get any previous feedback to influence this lesson
-        const allFeedback = await storage.getFeedbackByCourse(lesson.courseId);
-        const recentFeedback = allFeedback.slice(-3).map(f => f.feedback).join("\n- ");
-        
-        let feedbackContext = "";
-        if (recentFeedback) {
-          feedbackContext = `\n\nThe learner has provided this feedback on previous lessons that you should incorporate:\n- ${recentFeedback}`;
-        }
+      // If this lesson doesn't have content yet, return immediately and generate in background
+      const needsGeneration = lesson.content === "PENDING_GENERATION" || lesson.content === "Content will be generated when you reach this lesson.";
+      
+      if (needsGeneration) {
+        // Return immediately with generating status so UI can show loading state
+        res.json({
+          ...lesson,
+          content: "PENDING_GENERATION",
+          isGenerating: true,
+          course,
+          expansions,
+          isCompleted: progress?.isCompleted || false,
+          nextLessonId: nextLesson?.id,
+        });
 
-        const contentResponse = await anthropic.messages.create({
-          model: "claude-sonnet-4-5",
-          max_tokens: 2048,
-          messages: [
-            {
-              role: "user",
-              content: `Write a 5-minute educational lesson for: "${lesson.title}"
+        // Generate content in background (fire and forget)
+        (async () => {
+          try {
+            const allFeedback = await storage.getFeedbackByCourse(lesson.courseId);
+            const recentFeedback = allFeedback.slice(-3).map(f => f.feedback).join("\n- ");
+            
+            let feedbackContext = "";
+            if (recentFeedback) {
+              feedbackContext = `\n\nThe learner has provided this feedback on previous lessons that you should incorporate:\n- ${recentFeedback}`;
+            }
+
+            const contentResponse = await anthropic.messages.create({
+              model: "claude-sonnet-4-5",
+              max_tokens: 2048,
+              messages: [
+                {
+                  role: "user",
+                  content: `Write a 5-minute educational lesson for: "${lesson.title}"
 This is part of a course on: "${course?.title}"
 Session ${lesson.sessionNumber} of ${course?.totalLessons}.${feedbackContext}
 
@@ -508,25 +523,21 @@ At the end of the lesson, include a "Further Reading" section with 2-3 credible 
 Use real, well-known sources (books, academic institutions, reputable organizations, established publications). Do not invent fake sources.
 
 Just write the lesson content and further reading, no meta text or preamble.`,
-            },
-          ],
-        });
+                },
+              ],
+            });
 
-        const content = contentResponse.content[0].type === "text" 
-          ? contentResponse.content[0].text 
-          : "";
+            const content = contentResponse.content[0].type === "text" 
+              ? contentResponse.content[0].text 
+              : "";
 
-        // Update the lesson with generated content
-        await storage.updateLesson(lessonId, { content });
-
-        res.json({
-          ...lesson,
-          content,
-          course,
-          expansions,
-          isCompleted: progress?.isCompleted || false,
-          nextLessonId: nextLesson?.id,
-        });
+            await storage.updateLesson(lessonId, { content });
+            console.log(`Generated content for lesson ${lessonId}`);
+          } catch (error) {
+            console.error(`Error generating lesson ${lessonId}:`, error);
+          }
+        })();
+        
         return;
       }
 

@@ -67,9 +67,22 @@ Lessons are generated **on-demand** when the user accesses them (not upfront). T
 - Faster course creation (no waiting for all lessons)
 - Personalized content based on user feedback from previous lessons
 
+The generation flow:
+1. User opens a lesson → API returns immediately with "PENDING_GENERATION" status
+2. Frontend shows "Generating your lesson..." with a spinner
+3. Content generates in the background (using Claude AI)
+4. Frontend polls every 2 seconds until content is ready
+5. Once generated, content replaces the loading state
+
+Each lesson includes professional content with a "Further Reading" section containing 2-3 credible references.
+
+Note: The "5 minutes to read" estimate is hardcoded (defaulted to 5 in the schema), not calculated based on content length.
+
 The feedback system allows users to influence future lesson generation:
 - `POST /api/lessons/:id/feedback` - Submit feedback after completing a lesson
-- Recent feedback is included in prompts when generating subsequent lessons
+- Feedback is stored directly on the lesson (`userFeedback` column) and displayed at the bottom of the lesson page
+- Users can view and edit their feedback via a pencil icon
+- Recent feedback from previous lessons is included in prompts when generating subsequent lessons
 
 ### Development vs Production
 - **Development**: Vite dev server with HMR, proxied through Express

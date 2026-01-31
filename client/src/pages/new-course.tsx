@@ -5,13 +5,24 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Bot, Send, Loader2 } from "lucide-react";
+import { ArrowLeft, Bot, Send, Loader2, Hammer, RefreshCw } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
 interface Message {
   id: string;
   role: "assistant" | "user";
   content: string;
+  outline?: CourseOutline;
+}
+
+interface CourseOutline {
+  title: string;
+  description: string;
+  sessions: Array<{
+    title: string;
+    subtitle: string;
+    sessionNumber: number;
+  }>;
 }
 
 export default function NewCoursePage() {
@@ -26,6 +37,9 @@ export default function NewCoursePage() {
   ]);
   const [input, setInput] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isBuilding, setIsBuilding] = useState(false);
+  const [currentOutline, setCurrentOutline] = useState<CourseOutline | null>(null);
+  const [originalTopic, setOriginalTopic] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -36,10 +50,50 @@ export default function NewCoursePage() {
     scrollToBottom();
   }, [messages]);
 
-  const createCourseMutation = useMutation({
-    mutationFn: async (topic: string) => {
+  const previewMutation = useMutation({
+    mutationFn: async ({ topic, feedback, previousOutline }: { topic: string; feedback?: string; previousOutline?: CourseOutline }) => {
       setIsGenerating(true);
-      const response = await apiRequest("POST", "/api/courses/generate", { topic });
+      const response = await apiRequest("POST", "/api/courses/preview", { topic, feedback, previousOutline });
+      return response.json();
+    },
+    onSuccess: (data: CourseOutline) => {
+      setCurrentOutline(data);
+      setIsGenerating(false);
+      
+      const outlinePreview = `Here's what I'm thinking for your course:\n\n**${data.title}**\n${data.description}\n\n**Topics:**\n${data.sessions.map((s, i) => `${i + 1}. ${s.title} - ${s.subtitle}`).join('\n')}\n\nLook good? You can ask me to adjust the topics, add or remove sessions, or change the focus. When you're happy, click "Build Course" to create it.`;
+      
+      setMessages(prev => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: outlinePreview,
+          outline: data,
+        },
+      ]);
+    },
+    onError: () => {
+      setIsGenerating(false);
+      toast({ 
+        title: "Failed to generate preview", 
+        description: "Please try again.",
+        variant: "destructive" 
+      });
+      setMessages(prev => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: "Sorry, I had trouble creating a preview. Could you try describing the topic again?",
+        },
+      ]);
+    },
+  });
+
+  const buildMutation = useMutation({
+    mutationFn: async (outline: CourseOutline) => {
+      setIsBuilding(true);
+      const response = await apiRequest("POST", "/api/courses/build", { outline });
       return response.json();
     },
     onSuccess: (data) => {
@@ -49,17 +103,17 @@ export default function NewCoursePage() {
         {
           id: crypto.randomUUID(),
           role: "assistant",
-          content: `Great! I've created "${data.title}" for you with ${data.totalLessons} lessons. Let's start learning!`,
+          content: `Building "${data.title}" with ${data.totalLessons} lessons. Redirecting you now...`,
         },
       ]);
       setTimeout(() => {
         navigate(`/course/${data.id}`);
       }, 1500);
     },
-    onError: (error) => {
-      setIsGenerating(false);
+    onError: () => {
+      setIsBuilding(false);
       toast({ 
-        title: "Failed to generate course", 
+        title: "Failed to build course", 
         description: "Please try again.",
         variant: "destructive" 
       });
@@ -68,7 +122,7 @@ export default function NewCoursePage() {
         {
           id: crypto.randomUUID(),
           role: "assistant",
-          content: "Sorry, I had trouble creating your course. Could you try describing the topic again?",
+          content: "Sorry, I had trouble building the course. Want to try again?",
         },
       ]);
     },
@@ -76,7 +130,7 @@ export default function NewCoursePage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isGenerating) return;
+    if (!input.trim() || isGenerating || isBuilding) return;
 
     const userMessage: Message = {
       id: crypto.randomUUID(),
@@ -85,19 +139,52 @@ export default function NewCoursePage() {
     };
 
     setMessages(prev => [...prev, userMessage]);
+    const userInput = input.trim();
     setInput("");
 
-    if (messages.length === 1) {
+    if (!currentOutline) {
+      // First message - generate initial preview
+      setOriginalTopic(userInput);
       setMessages(prev => [
         ...prev,
         {
           id: crypto.randomUUID(),
           role: "assistant",
-          content: "Perfect! Let me create a personalized course for you...",
+          content: "Let me put together a course outline for you...",
         },
       ]);
-      createCourseMutation.mutate(userMessage.content);
+      previewMutation.mutate({ topic: userInput });
+    } else {
+      // Feedback on existing outline - regenerate with feedback
+      setMessages(prev => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: "Got it! Let me revise the outline...",
+        },
+      ]);
+      previewMutation.mutate({ 
+        topic: originalTopic, 
+        feedback: userInput, 
+        previousOutline: currentOutline 
+      });
     }
+  };
+
+  const handleBuild = () => {
+    if (!currentOutline || isBuilding) return;
+    
+    setMessages(prev => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        role: "user",
+        content: "Build this course!",
+      },
+    ]);
+    
+    buildMutation.mutate(currentOutline);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -133,7 +220,7 @@ export default function NewCoursePage() {
                 </div>
               )}
               <Card
-                className={`px-4 py-3 max-w-[80%] ${
+                className={`px-4 py-3 max-w-[85%] ${
                   message.role === "user"
                     ? "bg-primary text-primary-foreground"
                     : ""
@@ -152,7 +239,20 @@ export default function NewCoursePage() {
               <Card className="px-4 py-3">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Creating your personalized course...</span>
+                  <span>Creating your course outline...</span>
+                </div>
+              </Card>
+            </div>
+          )}
+          {isBuilding && (
+            <div className="flex gap-3 justify-start">
+              <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center flex-shrink-0">
+                <Bot className="w-4 h-4" />
+              </div>
+              <Card className="px-4 py-3">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Building your course and generating lesson content...</span>
                 </div>
               </Card>
             </div>
@@ -160,21 +260,35 @@ export default function NewCoursePage() {
           <div ref={messagesEndRef} />
         </div>
 
+        {currentOutline && !isBuilding && (
+          <div className="flex gap-2 mb-4">
+            <Button
+              onClick={handleBuild}
+              disabled={isGenerating || isBuilding}
+              className="flex-1"
+              data-testid="button-build-course"
+            >
+              <Hammer className="w-4 h-4 mr-2" />
+              Build Course
+            </Button>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="flex gap-2 items-end">
           <Textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Type your message..."
+            placeholder={currentOutline ? "Request changes to the outline..." : "Type your message..."}
             className="resize-none min-h-[52px] max-h-32 flex-1"
-            disabled={isGenerating}
+            disabled={isGenerating || isBuilding}
             data-testid="input-message"
           />
           <Button
             type="submit"
             size="icon"
             className="h-[52px] w-[52px] rounded-md flex-shrink-0"
-            disabled={!input.trim() || isGenerating}
+            disabled={!input.trim() || isGenerating || isBuilding}
             data-testid="button-send"
           >
             <Send className="w-4 h-4" />

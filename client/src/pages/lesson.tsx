@@ -59,7 +59,7 @@ export default function LessonPage() {
     },
     onSuccess: (data: TopicExpansion) => {
       setLocalExpansions(prev => [...prev, data]);
-      setExpandedIds(prev => new Set([...prev, data.id]));
+      setExpandedIds(prev => new Set([...Array.from(prev), data.id]));
       setExpandingTopic(null);
     },
     onError: () => {
@@ -72,7 +72,7 @@ export default function LessonPage() {
 
   const toggleExpansion = (id: number) => {
     setExpandedIds(prev => {
-      const newSet = new Set(prev);
+      const newSet = new Set(Array.from(prev));
       if (newSet.has(id)) {
         newSet.delete(id);
       } else {
@@ -205,8 +205,11 @@ export default function LessonPage() {
             variant="outline"
             className="w-full justify-start gap-2"
             onClick={() => {
-              const selection = window.getSelection()?.toString() || "this topic";
-              expandMutation.mutate(selection);
+              const selection = window.getSelection()?.toString().trim();
+              const topicToExpand = selection && selection.length > 2 && selection.length < 200 
+                ? selection 
+                : lesson.title;
+              expandMutation.mutate(topicToExpand);
             }}
             disabled={expandMutation.isPending}
             data-testid="button-expand-topic"
@@ -216,8 +219,11 @@ export default function LessonPage() {
             ) : (
               <Sparkles className="w-4 h-4" />
             )}
-            <span>Expand This Topic</span>
+            <span>{expandingTopic ? `Expanding: ${expandingTopic.substring(0, 30)}...` : "Expand This Topic"}</span>
           </Button>
+          <p className="text-xs text-muted-foreground text-center">
+            Select text to expand a specific topic, or click to dive deeper into the lesson
+          </p>
         </div>
 
         <div className="sticky bottom-4">

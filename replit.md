@@ -47,6 +47,17 @@ Key tables:
 - **Features**: Course generation, topic expansion within lessons
 - **Batch Processing**: Utility module for rate-limited parallel AI requests with retry logic
 
+### Course Creation Flow
+The app uses a conversational two-step process for course creation:
+1. **Preview** - User enters a topic, AI generates an outline preview with title, description, and session topics
+2. **Feedback** - User can request changes (e.g., "add more practical examples"), AI regenerates the outline
+3. **Build** - Once satisfied, user clicks "Build Course" to create the course and generate lesson content
+
+API Endpoints:
+- `POST /api/courses/preview` - Generate/revise outline without creating course
+- `POST /api/courses/build` - Create course from approved outline
+- `POST /api/courses/generate` - Legacy direct generation (kept for compatibility)
+
 ### Development vs Production
 - **Development**: Vite dev server with HMR, proxied through Express
 - **Production**: Static file serving from `dist/public`, bundled server in `dist/index.cjs`

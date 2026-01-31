@@ -488,18 +488,26 @@ Just write the lesson content, no meta text or introductions.`,
           messages: [
             {
               role: "user",
-              content: `Write a 5-minute lesson for: "${lesson.title}"
+              content: `Write a 5-minute educational lesson for: "${lesson.title}"
 This is part of a course on: "${course?.title}"
 Session ${lesson.sessionNumber} of ${course?.totalLessons}.${feedbackContext}
 
-Write engaging, educational content that:
-- Is formatted in clean markdown
-- Uses clear paragraphs (no headers in the body)
-- Includes real-world examples and analogies
-- Is conversational but informative
+Write professional, well-researched educational content that:
+- Is written at a high school reading level (clear and accessible)
+- Uses clean markdown formatting with clear paragraphs
+- Includes real-world examples and practical applications
+- Is informative and professional in tone
 - Is approximately 500-700 words
+- Presents accurate, factual information
 
-Just write the lesson content, no meta text or introductions.`,
+At the end of the lesson, include a "Further Reading" section with 2-3 credible references. Format like:
+**Further Reading**
+- [Title of resource] by Author/Organization - Brief description of what this covers
+- [Title of resource] by Author/Organization - Brief description
+
+Use real, well-known sources (books, academic institutions, reputable organizations, established publications). Do not invent fake sources.
+
+Just write the lesson content and further reading, no meta text or preamble.`,
             },
           ],
         });
@@ -590,14 +598,18 @@ Just write the lesson content, no meta text or introductions.`,
         return res.status(403).json({ error: "Access denied" });
       }
 
-      const newFeedback = await storage.createFeedback({
+      // Save feedback to the lesson's userFeedback column
+      await storage.updateLesson(lessonId, { userFeedback: feedback });
+
+      // Also save to the feedback table for course-wide tracking
+      await storage.createFeedback({
         userId,
         lessonId,
         courseId: lesson.courseId,
         feedback,
       });
 
-      res.json(newFeedback);
+      res.json({ success: true, feedback });
     } catch (error) {
       console.error("Error saving feedback:", error);
       res.status(500).json({ error: "Failed to save feedback" });

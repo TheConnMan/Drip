@@ -26,6 +26,7 @@ export const lessons = pgTable("lessons", {
   title: text("title").notNull(),
   subtitle: text("subtitle"),
   content: text("content").notNull(),
+  userFeedback: text("user_feedback"),
   estimatedMinutes: integer("estimated_minutes").default(5),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });

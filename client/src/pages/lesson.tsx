@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Clock, ChevronDown, ChevronUp, Sparkles, Check, Loader2, Menu, MessageSquare, X } from "lucide-react";
+import { ArrowLeft, Clock, ChevronDown, ChevronUp, Sparkles, Check, Loader2, Menu, MessageSquare, X, Pencil } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { apiRequest } from "@/lib/queryClient";
 import type { Lesson, Course, TopicExpansion } from "@shared/schema";
@@ -27,7 +27,7 @@ export default function LessonPage() {
   const [expandingTopic, setExpandingTopic] = useState<string | null>(null);
   const [localExpansions, setLocalExpansions] = useState<TopicExpansion[]>([]);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
-  const [showFeedback, setShowFeedback] = useState(false);
+  const [isEditingFeedback, setIsEditingFeedback] = useState(false);
   const [feedbackText, setFeedbackText] = useState("");
 
   const { data: lesson, isLoading } = useQuery<LessonDetail>({
@@ -61,8 +61,8 @@ export default function LessonPage() {
     },
     onSuccess: () => {
       toast({ title: "Feedback saved! Your next lessons will incorporate this." });
-      setFeedbackText("");
-      setShowFeedback(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/lessons", lessonId] });
+      setIsEditingFeedback(false);
     },
     onError: () => {
       toast({ title: "Failed to save feedback", variant: "destructive" });
@@ -249,55 +249,79 @@ export default function LessonPage() {
           </p>
         </div>
 
-        {showFeedback ? (
-          <Card className="p-4 mb-8">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-medium flex items-center gap-2">
-                <MessageSquare className="w-4 h-4" />
-                Give Feedback
-              </h3>
+        <Card className="p-4 mb-8" data-testid="card-feedback">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-medium flex items-center gap-2">
+              <MessageSquare className="w-4 h-4" />
+              Your Feedback
+            </h3>
+            {lesson.userFeedback && !isEditingFeedback && (
               <Button 
                 variant="ghost" 
                 size="icon" 
-                onClick={() => setShowFeedback(false)}
-                data-testid="button-close-feedback"
+                onClick={() => {
+                  setFeedbackText(lesson.userFeedback || "");
+                  setIsEditingFeedback(true);
+                }}
+                data-testid="button-edit-feedback"
               >
-                <X className="w-4 h-4" />
+                <Pencil className="w-4 h-4" />
               </Button>
-            </div>
-            <p className="text-sm text-muted-foreground mb-3">
-              Tell me how I can improve future lessons. Want more examples? Less jargon? Different focus?
+            )}
+          </div>
+          
+          {isEditingFeedback ? (
+            <>
+              <p className="text-sm text-muted-foreground mb-3">
+                Tell me how I can improve future lessons. Want more examples? Less jargon? Different focus?
+              </p>
+              <Textarea
+                value={feedbackText}
+                onChange={(e) => setFeedbackText(e.target.value)}
+                placeholder="e.g., More practical examples please, or Focus more on beginner concepts"
+                className="mb-3 min-h-[80px]"
+                data-testid="input-feedback"
+              />
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setIsEditingFeedback(false);
+                    setFeedbackText("");
+                  }}
+                  data-testid="button-cancel-feedback"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleFeedbackSubmit}
+                  disabled={!feedbackText.trim() || feedbackMutation.isPending}
+                  className="flex-1"
+                  data-testid="button-submit-feedback"
+                >
+                  {feedbackMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  ) : null}
+                  Save Feedback
+                </Button>
+              </div>
+            </>
+          ) : lesson.userFeedback ? (
+            <p className="text-sm text-muted-foreground" data-testid="text-saved-feedback">
+              {lesson.userFeedback}
             </p>
-            <Textarea
-              value={feedbackText}
-              onChange={(e) => setFeedbackText(e.target.value)}
-              placeholder="e.g., More practical examples please, or Focus more on beginner concepts"
-              className="mb-3 min-h-[80px]"
-              data-testid="input-feedback"
-            />
+          ) : (
             <Button
-              onClick={handleFeedbackSubmit}
-              disabled={!feedbackText.trim() || feedbackMutation.isPending}
-              className="w-full"
-              data-testid="button-submit-feedback"
+              variant="ghost"
+              className="w-full text-muted-foreground"
+              onClick={() => setIsEditingFeedback(true)}
+              data-testid="button-add-feedback"
             >
-              {feedbackMutation.isPending ? (
-                <Loader2 className="w-4 h-4 animate-spin mr-2" />
-              ) : null}
-              Submit Feedback
+              <MessageSquare className="w-4 h-4 mr-2" />
+              Add feedback to improve future lessons
             </Button>
-          </Card>
-        ) : (
-          <Button
-            variant="ghost"
-            className="w-full mb-8 text-muted-foreground"
-            onClick={() => setShowFeedback(true)}
-            data-testid="button-show-feedback"
-          >
-            <MessageSquare className="w-4 h-4 mr-2" />
-            Have feedback? Help improve future lessons
-          </Button>
-        )}
+          )}
+        </Card>
 
         <div className="sticky bottom-4">
           {lesson.isCompleted ? (

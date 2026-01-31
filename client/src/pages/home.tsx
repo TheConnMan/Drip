@@ -7,7 +7,7 @@ import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { BookOpen, Plus, Play, CheckCircle2, LogOut } from "lucide-react";
-import type { Course, LessonProgress } from "@shared/schema";
+import type { Course } from "@shared/schema";
 
 interface CourseWithProgress extends Course {
   completedLessons: number;
@@ -28,10 +28,8 @@ export default function Home() {
       <header className="border-b border-border/50 sticky top-0 z-50 bg-background/95 backdrop-blur-sm">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-md bg-primary flex items-center justify-center">
-              <BookOpen className="w-5 h-5 text-primary-foreground" />
-            </div>
-            <span className="font-semibold text-lg" data-testid="text-logo">MicroLearn</span>
+            <img src="/logo.png" alt="Drip" className="w-8 h-8 rounded-md" />
+            <span className="font-semibold text-lg" data-testid="text-logo">Drip</span>
           </div>
           <div className="flex items-center gap-3">
             <Button asChild data-testid="button-new-course">

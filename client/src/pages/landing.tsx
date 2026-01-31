@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { BookOpen, Sparkles, TrendingUp, Zap } from "lucide-react";
+import { Sparkles, TrendingUp, Zap } from "lucide-react";
 
 export default function Landing() {
   return (
@@ -8,10 +8,8 @@ export default function Landing() {
       <header className="border-b border-border/50 backdrop-blur-sm sticky top-0 z-50 bg-background/80">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-md bg-primary flex items-center justify-center">
-              <BookOpen className="w-5 h-5 text-primary-foreground" />
-            </div>
-            <span className="font-semibold text-lg" data-testid="text-logo">MicroLearn</span>
+            <img src="/logo.png" alt="Drip" className="w-8 h-8 rounded-md" />
+            <span className="font-semibold text-lg" data-testid="text-logo">Drip</span>
           </div>
           <Button asChild data-testid="button-login">
             <a href="/api/login">Sign In</a>
@@ -50,7 +48,7 @@ export default function Landing() {
 
         <section id="features" className="container mx-auto px-4 py-20 border-t border-border/50">
           <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold mb-4">Why MicroLearn?</h2>
+            <h2 className="text-3xl font-bold mb-4">Why Drip?</h2>
             <p className="text-muted-foreground max-w-xl mx-auto">
               We break down complex topics into digestible daily lessons, 
               making learning sustainable and enjoyable.
@@ -94,7 +92,7 @@ export default function Landing() {
           <div className="max-w-2xl mx-auto text-center">
             <h2 className="text-3xl font-bold mb-4">Ready to start learning?</h2>
             <p className="text-muted-foreground mb-8">
-              Join thousands of learners who are mastering new skills every day with MicroLearn.
+              Join thousands of learners who are mastering new skills every day with Drip.
             </p>
             <Button size="lg" asChild data-testid="button-cta-start">
               <a href="/api/login">Start Learning Now</a>

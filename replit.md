@@ -1,8 +1,8 @@
-# MicroLearn - AI-Powered Micro-Learning Platform
+# Drip - AI-Powered Micro-Learning Platform
 
 ## Overview
 
-MicroLearn is a full-stack web application that provides AI-powered micro-learning experiences. Users can request any topic, and the system generates personalized bite-sized lessons using Claude AI (Anthropic). The platform tracks learning progress, allows topic expansion within lessons, and provides a complete course management system.
+Drip is a full-stack web application that provides AI-powered micro-learning experiences. Users can request any topic, and the system generates personalized bite-sized lessons using Claude AI (Anthropic). The platform tracks learning progress, allows topic expansion within lessons, and provides a complete course management system.
 
 ## User Preferences
 

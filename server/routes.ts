@@ -73,13 +73,16 @@ export async function registerRoutes(
       }
 
       // Generate course outline with Claude
-      const outlineResponse = await anthropic.messages.create({
-        model: "claude-sonnet-4-5",
-        max_tokens: 4096,
-        messages: [
-          {
-            role: "user",
-            content: `Create a micro-learning course outline for the topic: "${topic}"
+      console.log("Generating course outline for topic:", topic);
+      let outlineResponse;
+      try {
+        outlineResponse = await anthropic.messages.create({
+          model: "claude-sonnet-4-5",
+          max_tokens: 4096,
+          messages: [
+            {
+              role: "user",
+              content: `Create a micro-learning course outline for the topic: "${topic}"
 
 Generate exactly 10-14 sessions (lessons) that progressively teach this topic.
 Each session should be a focused 5-minute read.
@@ -99,21 +102,54 @@ Respond with a JSON object in this exact format:
 
 Make titles engaging and subtitles informative. Order sessions logically for progressive learning.
 Only respond with valid JSON, no other text.`,
-          },
-        ],
-      });
+            },
+          ],
+        });
+      } catch (aiError: any) {
+        console.error("Claude API error:", aiError.message, aiError.status, aiError.error);
+        return res.status(500).json({ error: "Failed to generate course outline" });
+      }
 
-      const outlineText = outlineResponse.content[0].type === "text" 
-        ? outlineResponse.content[0].text 
-        : "";
+      // Check for valid response
+      if (!outlineResponse.content.length || outlineResponse.content[0].type !== "text") {
+        console.error("Invalid Claude response - no text content");
+        return res.status(500).json({ error: "Failed to generate course outline" });
+      }
+      
+      let outlineText = outlineResponse.content[0].text;
+      console.log("Outline response received, parsing...");
+      
+      // Extract JSON from response - handles code blocks and plain JSON
+      let jsonStr = outlineText;
+      
+      // Try to extract JSON from markdown code blocks using regex
+      const codeBlockMatch = outlineText.match(/```(?:json)?\s*([\s\S]*?)```/i);
+      if (codeBlockMatch) {
+        jsonStr = codeBlockMatch[1].trim();
+      } else {
+        // Try to find JSON object by locating first { and last }
+        const firstBrace = outlineText.indexOf("{");
+        const lastBrace = outlineText.lastIndexOf("}");
+        if (firstBrace !== -1 && lastBrace > firstBrace) {
+          jsonStr = outlineText.substring(firstBrace, lastBrace + 1);
+        }
+      }
       
       let outline;
       try {
-        outline = JSON.parse(outlineText);
+        outline = JSON.parse(jsonStr);
       } catch {
-        console.error("Failed to parse outline:", outlineText);
+        console.error("Failed to parse outline:", jsonStr.substring(0, 500));
         return res.status(500).json({ error: "Failed to generate course outline" });
       }
+      
+      // Validate required fields
+      if (!outline.title || !outline.description || !Array.isArray(outline.sessions) || outline.sessions.length === 0) {
+        console.error("Invalid outline structure:", outline);
+        return res.status(500).json({ error: "Failed to generate course outline" });
+      }
+      
+      console.log("Outline parsed successfully:", outline.title);
 
       // Create the course
       const course = await storage.createCourse({

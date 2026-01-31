@@ -1,8 +1,9 @@
 import { db } from "./db";
 import { 
-  courses, lessons, lessonProgress, topicExpansions,
+  courses, lessons, lessonProgress, topicExpansions, lessonFeedback,
   type Course, type InsertCourse, type Lesson, type InsertLesson,
-  type LessonProgress, type InsertLessonProgress, type TopicExpansion, type InsertTopicExpansion
+  type LessonProgress, type InsertLessonProgress, type TopicExpansion, type InsertTopicExpansion,
+  type LessonFeedback, type InsertLessonFeedback
 } from "@shared/schema";
 import { eq, and, desc, asc, sql } from "drizzle-orm";
 
@@ -12,6 +13,9 @@ export interface IStorage {
   getCoursesByUser(userId: string): Promise<(Course & { completedLessons: number })[]>;
   createCourse(course: InsertCourse): Promise<Course>;
   updateCourse(id: number, data: Partial<InsertCourse>): Promise<Course | undefined>;
+  deleteCourse(id: number): Promise<void>;
+  archiveCourse(id: number): Promise<Course | undefined>;
+  unarchiveCourse(id: number): Promise<Course | undefined>;
   
   // Lessons
   getLesson(id: number): Promise<Lesson | undefined>;
@@ -29,6 +33,10 @@ export interface IStorage {
   // Expansions
   getExpansionsByLesson(lessonId: number): Promise<TopicExpansion[]>;
   createExpansion(expansion: InsertTopicExpansion): Promise<TopicExpansion>;
+  
+  // Feedback
+  getFeedbackByCourse(courseId: number): Promise<LessonFeedback[]>;
+  createFeedback(feedback: InsertLessonFeedback): Promise<LessonFeedback>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -67,6 +75,28 @@ export class DatabaseStorage implements IStorage {
     const [updated] = await db
       .update(courses)
       .set({ ...data, updatedAt: new Date() })
+      .where(eq(courses.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteCourse(id: number): Promise<void> {
+    await db.delete(courses).where(eq(courses.id, id));
+  }
+
+  async archiveCourse(id: number): Promise<Course | undefined> {
+    const [updated] = await db
+      .update(courses)
+      .set({ isArchived: true, updatedAt: new Date() })
+      .where(eq(courses.id, id))
+      .returning();
+    return updated;
+  }
+
+  async unarchiveCourse(id: number): Promise<Course | undefined> {
+    const [updated] = await db
+      .update(courses)
+      .set({ isArchived: false, updatedAt: new Date() })
       .where(eq(courses.id, id))
       .returning();
     return updated;
@@ -192,6 +222,20 @@ export class DatabaseStorage implements IStorage {
   async createExpansion(expansion: InsertTopicExpansion): Promise<TopicExpansion> {
     const [newExpansion] = await db.insert(topicExpansions).values(expansion).returning();
     return newExpansion;
+  }
+
+  // Feedback
+  async getFeedbackByCourse(courseId: number): Promise<LessonFeedback[]> {
+    return db
+      .select()
+      .from(lessonFeedback)
+      .where(eq(lessonFeedback.courseId, courseId))
+      .orderBy(asc(lessonFeedback.createdAt));
+  }
+
+  async createFeedback(feedback: InsertLessonFeedback): Promise<LessonFeedback> {
+    const [newFeedback] = await db.insert(lessonFeedback).values(feedback).returning();
+    return newFeedback;
   }
 }
 

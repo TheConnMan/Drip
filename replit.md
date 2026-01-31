@@ -36,9 +36,10 @@ The server uses a modular structure with routes registered in `server/routes.ts`
 - **Migrations**: Drizzle Kit (`drizzle-kit push` for development)
 
 Key tables:
-- `courses` - User courses with progress tracking
+- `courses` - User courses with progress tracking and archive status
 - `lessons` - Individual lessons within courses
 - `lesson_progress` - Per-user completion status
+- `lesson_feedback` - User feedback that influences future lesson generation
 - `topic_expansions` - AI-generated deep dives on specific topics
 - `users` and `sessions` - Authentication (required for Replit Auth)
 
@@ -48,15 +49,27 @@ Key tables:
 - **Batch Processing**: Utility module for rate-limited parallel AI requests with retry logic
 
 ### Course Creation Flow
-The app uses a conversational two-step process for course creation:
-1. **Preview** - User enters a topic, AI generates an outline preview with title, description, and session topics
-2. **Feedback** - User can request changes (e.g., "add more practical examples"), AI regenerates the outline
-3. **Build** - Once satisfied, user clicks "Build Course" to create the course and generate lesson content
+The app uses a conversational process for course creation:
+1. **Clarifying Questions** - For vague topics (e.g., "marketing"), AI asks clarifying questions first
+2. **Preview** - Once topic is specific enough, AI generates an outline preview with title, description, and session topics
+3. **Feedback** - User can request changes (e.g., "add more practical examples"), AI regenerates the outline
+4. **Build** - Once satisfied, user clicks "Build Course" to create the course
 
 API Endpoints:
-- `POST /api/courses/preview` - Generate/revise outline without creating course
-- `POST /api/courses/build` - Create course from approved outline
-- `POST /api/courses/generate` - Legacy direct generation (kept for compatibility)
+- `POST /api/courses/preview` - Generates clarifying questions or outline based on topic specificity
+- `POST /api/courses/build` - Create course from approved outline (lessons created with placeholder content)
+- `DELETE /api/courses/:id` - Delete a course
+- `POST /api/courses/:id/archive` - Archive a course
+- `POST /api/courses/:id/unarchive` - Restore an archived course
+
+### Lesson Generation
+Lessons are generated **on-demand** when the user accesses them (not upfront). This provides:
+- Faster course creation (no waiting for all lessons)
+- Personalized content based on user feedback from previous lessons
+
+The feedback system allows users to influence future lesson generation:
+- `POST /api/lessons/:id/feedback` - Submit feedback after completing a lesson
+- Recent feedback is included in prompts when generating subsequent lessons
 
 ### Development vs Production
 - **Development**: Vite dev server with HMR, proxied through Express

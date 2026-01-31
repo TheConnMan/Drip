@@ -77,34 +77,28 @@ export async function registerRoutes(
     return JSON.parse(jsonStr);
   }
 
-  // Preview course outline (without creating)
+  // Preview course outline (without creating) - with clarifying questions for vague topics
   app.post("/api/courses/preview", isAuthenticated, async (req: any, res) => {
     try {
-      const { topic, feedback, previousOutline } = req.body;
+      const { topic, feedback, previousOutline, conversationHistory } = req.body;
 
       if (!topic) {
         return res.status(400).json({ error: "Topic is required" });
       }
 
-      let prompt = `Create a micro-learning course outline for the topic: "${topic}"
-
-Generate exactly 10-14 sessions (lessons) that progressively teach this topic.
-Each session should be a focused 5-minute read.`;
-
+      // If we already have an outline and user is providing feedback, revise it
       if (previousOutline && feedback) {
-        prompt = `I previously suggested this course outline for "${topic}":
+        const revisePrompt = `I previously suggested this course outline for "${topic}":
 
 ${JSON.stringify(previousOutline, null, 2)}
 
 The user provided this feedback: "${feedback}"
 
-Please revise the course outline based on their feedback. Keep the same JSON format.`;
-      }
-
-      prompt += `
+Please revise the course outline based on their feedback.
 
 Respond with a JSON object in this exact format:
 {
+  "type": "outline",
   "title": "Course Title",
   "description": "A brief description of what the learner will gain",
   "sessions": [
@@ -116,34 +110,88 @@ Respond with a JSON object in this exact format:
   ]
 }
 
-Make titles engaging and subtitles informative. Order sessions logically for progressive learning.
 Only respond with valid JSON, no other text.`;
 
-      console.log("Generating course preview for topic:", topic);
+        const response = await anthropic.messages.create({
+          model: "claude-sonnet-4-5",
+          max_tokens: 4096,
+          messages: [{ role: "user", content: revisePrompt }],
+        });
+
+        if (!response.content.length || response.content[0].type !== "text") {
+          return res.status(500).json({ error: "Failed to generate preview" });
+        }
+
+        const result = extractJSON(response.content[0].text);
+        res.json({ ...result, type: "outline" });
+        return;
+      }
+
+      // For new topics, decide whether to ask clarifying questions or generate outline
+      const decisionPrompt = `A user wants to learn about: "${topic}"
+
+${conversationHistory ? `Previous conversation:\n${conversationHistory}\n\n` : ''}Analyze this topic request and decide:
+
+1. If the topic is specific enough to create a good learning path (e.g., "Python basics for data science", "How to start a podcast", "Understanding cryptocurrency"), generate a course outline.
+
+2. If the topic is vague or could go in many directions (e.g., "marketing", "AI", "fitness"), ask 1-2 clarifying questions to better understand what they want to learn.
+
+Respond with a JSON object in ONE of these formats:
+
+For clarifying questions:
+{
+  "type": "question",
+  "question": "Your clarifying question here"
+}
+
+For generating outline (when topic is specific enough):
+{
+  "type": "outline",
+  "title": "Course Title",
+  "description": "A brief description of what the learner will gain",
+  "sessions": [
+    {
+      "title": "Session Title",
+      "subtitle": "Brief hook or description",
+      "sessionNumber": 1
+    }
+  ]
+}
+
+If generating an outline, create 10-14 sessions that progressively teach this topic. Each session should be a focused 5-minute read. Make titles engaging and subtitles informative.
+
+Only respond with valid JSON, no other text.`;
+
+      console.log("Processing course topic:", topic);
       const response = await anthropic.messages.create({
         model: "claude-sonnet-4-5",
         max_tokens: 4096,
-        messages: [{ role: "user", content: prompt }],
+        messages: [{ role: "user", content: decisionPrompt }],
       });
 
       if (!response.content.length || response.content[0].type !== "text") {
-        return res.status(500).json({ error: "Failed to generate preview" });
+        return res.status(500).json({ error: "Failed to process request" });
       }
 
-      const outline = extractJSON(response.content[0].text);
+      const result = extractJSON(response.content[0].text);
       
-      if (!outline.title || !outline.description || !Array.isArray(outline.sessions)) {
-        return res.status(500).json({ error: "Invalid outline structure" });
+      if (result.type === "question") {
+        res.json({ type: "question", question: result.question });
+      } else if (result.type === "outline") {
+        if (!result.title || !result.description || !Array.isArray(result.sessions)) {
+          return res.status(500).json({ error: "Invalid outline structure" });
+        }
+        res.json(result);
+      } else {
+        return res.status(500).json({ error: "Invalid response type" });
       }
-
-      res.json(outline);
     } catch (error) {
       console.error("Error generating preview:", error);
       res.status(500).json({ error: "Failed to generate preview" });
     }
   });
 
-  // Build course from approved outline
+  // Build course from approved outline - lessons generated on-demand
   app.post("/api/courses/build", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
@@ -176,53 +224,14 @@ Only respond with valid JSON, no other text.`;
         isCompleted: false,
       });
 
-      // Generate content for the first 3 lessons in parallel
-      const sessionsToGenerate = outline.sessions.slice(0, 3);
-      const lessonContents = await Promise.all(
-        sessionsToGenerate.map(async (session: any) => {
-          const contentResponse = await anthropic.messages.create({
-            model: "claude-sonnet-4-5",
-            max_tokens: 2048,
-            messages: [
-              {
-                role: "user",
-                content: `Write a 5-minute lesson for the session: "${session.title}"
-This is part of a course on: "${outline.title}"
-Session ${session.sessionNumber} of ${outline.sessions.length}.
-
-Write engaging, educational content that:
-- Is formatted in clean markdown
-- Uses clear paragraphs (no headers in the body)
-- Includes real-world examples and analogies
-- Is conversational but informative
-- Is approximately 500-700 words
-
-Just write the lesson content, no meta text or introductions.`,
-              },
-            ],
-          });
-
-          return {
-            ...session,
-            content: contentResponse.content[0].type === "text" 
-              ? contentResponse.content[0].text 
-              : "",
-          };
-        })
-      );
-
-      // Create lessons in database
+      // Create all lessons with placeholder content - will be generated on-demand
       for (const session of outline.sessions) {
-        const generatedContent = lessonContents.find(
-          (l: any) => l.sessionNumber === session.sessionNumber
-        );
-        
         await storage.createLesson({
           courseId: course.id,
           sessionNumber: session.sessionNumber,
           title: session.title,
           subtitle: session.subtitle,
-          content: generatedContent?.content || "Content will be generated when you reach this lesson.",
+          content: "PENDING_GENERATION",
           estimatedMinutes: 5,
         });
       }
@@ -231,6 +240,75 @@ Just write the lesson content, no meta text or introductions.`,
     } catch (error) {
       console.error("Error building course:", error);
       res.status(500).json({ error: "Failed to build course" });
+    }
+  });
+
+  // Delete a course
+  app.delete("/api/courses/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const courseId = parseInt(req.params.id);
+      const userId = req.user.claims.sub;
+
+      const course = await storage.getCourse(courseId);
+      if (!course) {
+        return res.status(404).json({ error: "Course not found" });
+      }
+
+      if (course.userId !== userId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      await storage.deleteCourse(courseId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting course:", error);
+      res.status(500).json({ error: "Failed to delete course" });
+    }
+  });
+
+  // Archive a course
+  app.post("/api/courses/:id/archive", isAuthenticated, async (req: any, res) => {
+    try {
+      const courseId = parseInt(req.params.id);
+      const userId = req.user.claims.sub;
+
+      const course = await storage.getCourse(courseId);
+      if (!course) {
+        return res.status(404).json({ error: "Course not found" });
+      }
+
+      if (course.userId !== userId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      const updated = await storage.archiveCourse(courseId);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error archiving course:", error);
+      res.status(500).json({ error: "Failed to archive course" });
+    }
+  });
+
+  // Unarchive a course
+  app.post("/api/courses/:id/unarchive", isAuthenticated, async (req: any, res) => {
+    try {
+      const courseId = parseInt(req.params.id);
+      const userId = req.user.claims.sub;
+
+      const course = await storage.getCourse(courseId);
+      if (!course) {
+        return res.status(404).json({ error: "Course not found" });
+      }
+
+      if (course.userId !== userId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      const updated = await storage.unarchiveCourse(courseId);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error unarchiving course:", error);
+      res.status(500).json({ error: "Failed to unarchive course" });
     }
   });
 
@@ -393,8 +471,17 @@ Just write the lesson content, no meta text or introductions.`,
       const progress = await storage.getLessonProgress(userId, lessonId);
       const nextLesson = await storage.getNextLesson(lesson.courseId, lesson.sessionNumber);
 
-      // If this lesson doesn't have content yet, generate it
-      if (lesson.content === "Content will be generated when you reach this lesson.") {
+      // If this lesson doesn't have content yet, generate it on-demand
+      if (lesson.content === "PENDING_GENERATION" || lesson.content === "Content will be generated when you reach this lesson.") {
+        // Get any previous feedback to influence this lesson
+        const allFeedback = await storage.getFeedbackByCourse(lesson.courseId);
+        const recentFeedback = allFeedback.slice(-3).map(f => f.feedback).join("\n- ");
+        
+        let feedbackContext = "";
+        if (recentFeedback) {
+          feedbackContext = `\n\nThe learner has provided this feedback on previous lessons that you should incorporate:\n- ${recentFeedback}`;
+        }
+
         const contentResponse = await anthropic.messages.create({
           model: "claude-sonnet-4-5",
           max_tokens: 2048,
@@ -403,7 +490,7 @@ Just write the lesson content, no meta text or introductions.`,
               role: "user",
               content: `Write a 5-minute lesson for: "${lesson.title}"
 This is part of a course on: "${course?.title}"
-Session ${lesson.sessionNumber} of ${course?.totalLessons}.
+Session ${lesson.sessionNumber} of ${course?.totalLessons}.${feedbackContext}
 
 Write engaging, educational content that:
 - Is formatted in clean markdown
@@ -478,6 +565,42 @@ Just write the lesson content, no meta text or introductions.`,
     } catch (error) {
       console.error("Error marking lesson complete:", error);
       res.status(500).json({ error: "Failed to mark lesson complete" });
+    }
+  });
+
+  // Submit feedback for a lesson (influences future lessons)
+  app.post("/api/lessons/:id/feedback", isAuthenticated, async (req: any, res) => {
+    try {
+      const lessonId = parseInt(req.params.id);
+      const userId = req.user.claims.sub;
+      const { feedback } = req.body;
+
+      if (!feedback || typeof feedback !== "string") {
+        return res.status(400).json({ error: "Feedback is required" });
+      }
+
+      const lesson = await storage.getLesson(lessonId);
+      if (!lesson) {
+        return res.status(404).json({ error: "Lesson not found" });
+      }
+
+      // Verify ownership
+      const course = await storage.getCourse(lesson.courseId);
+      if (!course || course.userId !== userId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      const newFeedback = await storage.createFeedback({
+        userId,
+        lessonId,
+        courseId: lesson.courseId,
+        feedback,
+      });
+
+      res.json(newFeedback);
+    } catch (error) {
+      console.error("Error saving feedback:", error);
+      res.status(500).json({ error: "Failed to save feedback" });
     }
   });
 

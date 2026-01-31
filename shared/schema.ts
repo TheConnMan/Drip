@@ -13,6 +13,7 @@ export const courses = pgTable("courses", {
   description: text("description"),
   totalLessons: integer("total_lessons").default(0),
   isCompleted: boolean("is_completed").default(false),
+  isArchived: boolean("is_archived").default(false),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
@@ -26,6 +27,16 @@ export const lessons = pgTable("lessons", {
   subtitle: text("subtitle"),
   content: text("content").notNull(),
   estimatedMinutes: integer("estimated_minutes").default(5),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+// Lesson feedback for influencing future lessons
+export const lessonFeedback = pgTable("lesson_feedback", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull(),
+  lessonId: integer("lesson_id").notNull().references(() => lessons.id, { onDelete: "cascade" }),
+  courseId: integer("course_id").notNull().references(() => courses.id, { onDelete: "cascade" }),
+  feedback: text("feedback").notNull(),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
@@ -69,6 +80,11 @@ export const insertTopicExpansionSchema = createInsertSchema(topicExpansions).om
   createdAt: true,
 });
 
+export const insertLessonFeedbackSchema = createInsertSchema(lessonFeedback).omit({
+  id: true,
+  createdAt: true,
+});
+
 // Types
 export type Course = typeof courses.$inferSelect;
 export type InsertCourse = z.infer<typeof insertCourseSchema>;
@@ -78,3 +94,5 @@ export type LessonProgress = typeof lessonProgress.$inferSelect;
 export type InsertLessonProgress = z.infer<typeof insertLessonProgressSchema>;
 export type TopicExpansion = typeof topicExpansions.$inferSelect;
 export type InsertTopicExpansion = z.infer<typeof insertTopicExpansionSchema>;
+export type LessonFeedback = typeof lessonFeedback.$inferSelect;
+export type InsertLessonFeedback = z.infer<typeof insertLessonFeedbackSchema>;

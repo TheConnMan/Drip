@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Bot, Send, Loader2, Hammer, RefreshCw } from "lucide-react";
+import { ArrowLeft, Bot, Send, Loader2, Hammer } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
 interface Message {
@@ -40,6 +40,7 @@ export default function NewCoursePage() {
   const [isBuilding, setIsBuilding] = useState(false);
   const [currentOutline, setCurrentOutline] = useState<CourseOutline | null>(null);
   const [originalTopic, setOriginalTopic] = useState("");
+  const [conversationHistory, setConversationHistory] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -51,26 +52,48 @@ export default function NewCoursePage() {
   }, [messages]);
 
   const previewMutation = useMutation({
-    mutationFn: async ({ topic, feedback, previousOutline }: { topic: string; feedback?: string; previousOutline?: CourseOutline }) => {
+    mutationFn: async ({ topic, feedback, previousOutline, conversationHistory }: { 
+      topic: string; 
+      feedback?: string; 
+      previousOutline?: CourseOutline;
+      conversationHistory?: string;
+    }) => {
       setIsGenerating(true);
-      const response = await apiRequest("POST", "/api/courses/preview", { topic, feedback, previousOutline });
+      const response = await apiRequest("POST", "/api/courses/preview", { 
+        topic, 
+        feedback, 
+        previousOutline,
+        conversationHistory
+      });
       return response.json();
     },
-    onSuccess: (data: CourseOutline) => {
-      setCurrentOutline(data);
+    onSuccess: (data) => {
       setIsGenerating(false);
       
-      const outlinePreview = `Here's what I'm thinking for your course:\n\n**${data.title}**\n${data.description}\n\n**Topics:**\n${data.sessions.map((s, i) => `${i + 1}. ${s.title} - ${s.subtitle}`).join('\n')}\n\nLook good? You can ask me to adjust the topics, add or remove sessions, or change the focus. When you're happy, click "Build Course" to create it.`;
-      
-      setMessages(prev => [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: outlinePreview,
-          outline: data,
-        },
-      ]);
+      if (data.type === "question") {
+        setMessages(prev => [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            role: "assistant",
+            content: data.question,
+          },
+        ]);
+        setConversationHistory(prev => 
+          prev + `\nAssistant: ${data.question}`
+        );
+      } else {
+        setCurrentOutline(data);
+        setMessages(prev => [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            role: "assistant",
+            content: "",
+            outline: data,
+          },
+        ]);
+      }
     },
     onError: () => {
       setIsGenerating(false);
@@ -84,7 +107,7 @@ export default function NewCoursePage() {
         {
           id: crypto.randomUUID(),
           role: "assistant",
-          content: "Sorry, I had trouble creating a preview. Could you try describing the topic again?",
+          content: "Sorry, I had trouble processing that. Could you try describing the topic again?",
         },
       ]);
     },
@@ -103,7 +126,7 @@ export default function NewCoursePage() {
         {
           id: crypto.randomUUID(),
           role: "assistant",
-          content: `Building "${data.title}" with ${data.totalLessons} lessons. Redirecting you now...`,
+          content: `Your course "${data.title}" is ready! Redirecting you now...`,
         },
       ]);
       setTimeout(() => {
@@ -143,19 +166,26 @@ export default function NewCoursePage() {
     setInput("");
 
     if (!currentOutline) {
-      // First message - generate initial preview
-      setOriginalTopic(userInput);
+      if (!originalTopic) {
+        setOriginalTopic(userInput);
+      }
+      
+      const updatedHistory = conversationHistory + `\nUser: ${userInput}`;
+      setConversationHistory(updatedHistory);
+      
       setMessages(prev => [
         ...prev,
         {
           id: crypto.randomUUID(),
           role: "assistant",
-          content: "Let me put together a course outline for you...",
+          content: "Let me think about that...",
         },
       ]);
-      previewMutation.mutate({ topic: userInput });
+      previewMutation.mutate({ 
+        topic: originalTopic || userInput, 
+        conversationHistory: updatedHistory 
+      });
     } else {
-      // Feedback on existing outline - regenerate with feedback
       setMessages(prev => [
         ...prev,
         {
@@ -219,16 +249,51 @@ export default function NewCoursePage() {
                   <Bot className="w-4 h-4" />
                 </div>
               )}
-              <Card
-                className={`px-4 py-3 max-w-[85%] ${
-                  message.role === "user"
-                    ? "bg-primary text-primary-foreground"
-                    : ""
-                }`}
-                data-testid={`message-${message.id}`}
-              >
-                <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-              </Card>
+              {message.outline ? (
+                <Card className="px-4 py-4 max-w-[90%]" data-testid={`message-${message.id}`}>
+                  <div className="space-y-4">
+                    <div>
+                      <h3 className="font-semibold text-lg text-primary">{message.outline.title}</h3>
+                      <p className="text-sm text-muted-foreground mt-1">{message.outline.description}</p>
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-medium mb-2">Course Topics</h4>
+                      <div className="space-y-2">
+                        {message.outline.sessions.map((session) => (
+                          <div 
+                            key={session.sessionNumber}
+                            className="flex gap-3 p-2 rounded-md bg-muted/50"
+                          >
+                            <span className="text-primary font-medium text-sm w-6 flex-shrink-0">
+                              {session.sessionNumber}.
+                            </span>
+                            <div className="flex-1">
+                              <p className="text-sm font-medium">{session.title}</p>
+                              {session.subtitle && (
+                                <p className="text-xs text-muted-foreground">{session.subtitle}</p>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      Look good? You can ask me to adjust the topics, add or remove sessions, or change the focus. When you're happy, click "Build Course" to create it.
+                    </p>
+                  </div>
+                </Card>
+              ) : (
+                <Card
+                  className={`px-4 py-3 max-w-[85%] ${
+                    message.role === "user"
+                      ? "bg-primary text-primary-foreground"
+                      : ""
+                  }`}
+                  data-testid={`message-${message.id}`}
+                >
+                  <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                </Card>
+              )}
             </div>
           ))}
           {isGenerating && (
@@ -239,7 +304,7 @@ export default function NewCoursePage() {
               <Card className="px-4 py-3">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Creating your course outline...</span>
+                  <span>Thinking...</span>
                 </div>
               </Card>
             </div>
@@ -252,7 +317,7 @@ export default function NewCoursePage() {
               <Card className="px-4 py-3">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Building your course and generating lesson content...</span>
+                  <span>Creating your course...</span>
                 </div>
               </Card>
             </div>
@@ -261,11 +326,12 @@ export default function NewCoursePage() {
         </div>
 
         {currentOutline && !isBuilding && (
-          <div className="flex gap-2 mb-4">
+          <div className="mb-4">
             <Button
               onClick={handleBuild}
               disabled={isGenerating || isBuilding}
-              className="flex-1"
+              className="w-full"
+              size="lg"
               data-testid="button-build-course"
             >
               <Hammer className="w-4 h-4 mr-2" />
@@ -274,20 +340,22 @@ export default function NewCoursePage() {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="flex gap-2 items-end">
-          <Textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={currentOutline ? "Request changes to the outline..." : "Type your message..."}
-            className="resize-none min-h-[52px] max-h-32 flex-1"
-            disabled={isGenerating || isBuilding}
-            data-testid="input-message"
-          />
+        <form onSubmit={handleSubmit} className="flex gap-3 items-end">
+          <div className="flex-1">
+            <Textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={currentOutline ? "Request changes to the outline..." : "Type your message..."}
+              className="resize-none min-h-[52px] max-h-32"
+              disabled={isGenerating || isBuilding}
+              data-testid="input-message"
+            />
+          </div>
           <Button
             type="submit"
             size="icon"
-            className="h-[52px] w-[52px] rounded-md flex-shrink-0"
+            className="h-[52px] w-[52px] flex-shrink-0"
             disabled={!input.trim() || isGenerating || isBuilding}
             data-testid="button-send"
           >

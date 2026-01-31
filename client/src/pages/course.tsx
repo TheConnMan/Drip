@@ -1,10 +1,30 @@
-import { useQuery } from "@tanstack/react-query";
-import { useParams, Link } from "wouter";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useParams, Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, BookOpen, CheckCircle2, Circle, Lock } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { ArrowLeft, BookOpen, CheckCircle2, Circle, Lock, MoreVertical, Archive, Trash2 } from "lucide-react";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import type { Course, Lesson, LessonProgress } from "@shared/schema";
 
 interface CourseDetail extends Course {
@@ -15,9 +35,41 @@ interface CourseDetail extends Course {
 
 export default function CoursePage() {
   const { id } = useParams<{ id: string }>();
+  const [, navigate] = useLocation();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   const { data: course, isLoading } = useQuery<CourseDetail>({
     queryKey: ["/api/courses", id],
+  });
+
+  const archiveMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", `/api/courses/${id}/archive`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/courses"] });
+      toast({ title: "Course archived" });
+      navigate("/");
+    },
+    onError: () => {
+      toast({ title: "Failed to archive course", variant: "destructive" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("DELETE", `/api/courses/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/courses"] });
+      toast({ title: "Course deleted" });
+      navigate("/");
+    },
+    onError: () => {
+      toast({ title: "Failed to delete course", variant: "destructive" });
+    },
   });
 
   if (isLoading) {
@@ -65,13 +117,40 @@ export default function CoursePage() {
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border/50 sticky top-0 z-50 bg-background/95 backdrop-blur-sm">
-        <div className="container mx-auto px-4 h-14 flex items-center gap-4">
-          <Button variant="ghost" size="icon" asChild data-testid="button-back">
-            <Link href="/">
-              <ArrowLeft className="w-5 h-5" />
-            </Link>
-          </Button>
-          <h1 className="font-semibold truncate" data-testid="text-course-title">{course.title}</h1>
+        <div className="container mx-auto px-4 h-14 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" size="icon" asChild data-testid="button-back">
+              <Link href="/">
+                <ArrowLeft className="w-5 h-5" />
+              </Link>
+            </Button>
+            <h1 className="font-semibold truncate" data-testid="text-course-title">{course.title}</h1>
+          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" data-testid="button-course-menu">
+                <MoreVertical className="w-5 h-5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem 
+                onClick={() => archiveMutation.mutate()}
+                data-testid="button-archive"
+              >
+                <Archive className="w-4 h-4 mr-2" />
+                Archive Course
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem 
+                onClick={() => setShowDeleteDialog(true)}
+                className="text-destructive focus:text-destructive"
+                data-testid="button-delete"
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Delete Course
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </header>
 
@@ -111,6 +190,27 @@ export default function CoursePage() {
           })}
         </div>
       </main>
+
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Course</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete "{course.title}"? This action cannot be undone and will remove all your progress.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-delete">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteMutation.mutate()}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              data-testid="button-confirm-delete"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

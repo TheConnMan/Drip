@@ -28,6 +28,7 @@ export const lessons = pgTable("lessons", {
   content: text("content").notNull(),
   userFeedback: text("user_feedback"),
   estimatedMinutes: integer("estimated_minutes").default(5),
+  citationMap: text("citation_map"), // JSON: {1: "https://...", 2: "https://..."}
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
@@ -48,6 +49,19 @@ export const lessonProgress = pgTable("lesson_progress", {
   lessonId: integer("lesson_id").notNull().references(() => lessons.id, { onDelete: "cascade" }),
   courseId: integer("course_id").notNull().references(() => courses.id, { onDelete: "cascade" }),
   isCompleted: boolean("is_completed").default(false),
+  completedAt: timestamp("completed_at"),
+});
+
+// Course research from Perplexity Deep Research
+export const courseResearch = pgTable("course_research", {
+  id: serial("id").primaryKey(),
+  courseId: integer("course_id").notNull().references(() => courses.id, { onDelete: "cascade" }),
+  researchContent: text("research_content").notNull(),
+  citations: text("citations").notNull(), // JSON array [{id, url, domain}]
+  status: varchar("status", { length: 50 }).notNull().default("pending"), // pending|generating|completed|failed
+  confidenceScore: integer("confidence_score"), // 0-100
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
   completedAt: timestamp("completed_at"),
 });
 
@@ -86,6 +100,11 @@ export const insertLessonFeedbackSchema = createInsertSchema(lessonFeedback).omi
   createdAt: true,
 });
 
+export const insertCourseResearchSchema = createInsertSchema(courseResearch).omit({
+  id: true,
+  createdAt: true,
+});
+
 // Types
 export type Course = typeof courses.$inferSelect;
 export type InsertCourse = z.infer<typeof insertCourseSchema>;
@@ -97,3 +116,5 @@ export type TopicExpansion = typeof topicExpansions.$inferSelect;
 export type InsertTopicExpansion = z.infer<typeof insertTopicExpansionSchema>;
 export type LessonFeedback = typeof lessonFeedback.$inferSelect;
 export type InsertLessonFeedback = z.infer<typeof insertLessonFeedbackSchema>;
+export type CourseResearch = typeof courseResearch.$inferSelect;
+export type InsertCourseResearch = z.infer<typeof insertCourseResearchSchema>;

@@ -1,9 +1,9 @@
 import { db } from "./db";
-import { 
-  courses, lessons, lessonProgress, topicExpansions, lessonFeedback,
+import {
+  courses, lessons, lessonProgress, topicExpansions, lessonFeedback, courseResearch,
   type Course, type InsertCourse, type Lesson, type InsertLesson,
   type LessonProgress, type InsertLessonProgress, type TopicExpansion, type InsertTopicExpansion,
-  type LessonFeedback, type InsertLessonFeedback
+  type LessonFeedback, type InsertLessonFeedback, type CourseResearch, type InsertCourseResearch
 } from "@shared/schema";
 import { eq, and, desc, asc, sql } from "drizzle-orm";
 
@@ -37,6 +37,11 @@ export interface IStorage {
   // Feedback
   getFeedbackByCourse(courseId: number): Promise<LessonFeedback[]>;
   createFeedback(feedback: InsertLessonFeedback): Promise<LessonFeedback>;
+
+  // Research
+  createCourseResearch(data: InsertCourseResearch): Promise<CourseResearch>;
+  getCourseResearch(courseId: number): Promise<CourseResearch | undefined>;
+  updateCourseResearch(id: number, data: Partial<CourseResearch>): Promise<CourseResearch | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -236,6 +241,26 @@ export class DatabaseStorage implements IStorage {
   async createFeedback(feedback: InsertLessonFeedback): Promise<LessonFeedback> {
     const [newFeedback] = await db.insert(lessonFeedback).values(feedback).returning();
     return newFeedback;
+  }
+
+  // Research
+  async createCourseResearch(data: InsertCourseResearch): Promise<CourseResearch> {
+    const [newResearch] = await db.insert(courseResearch).values(data).returning();
+    return newResearch;
+  }
+
+  async getCourseResearch(courseId: number): Promise<CourseResearch | undefined> {
+    const [research] = await db.select().from(courseResearch).where(eq(courseResearch.courseId, courseId));
+    return research;
+  }
+
+  async updateCourseResearch(id: number, data: Partial<CourseResearch>): Promise<CourseResearch | undefined> {
+    const [updated] = await db
+      .update(courseResearch)
+      .set(data)
+      .where(eq(courseResearch.id, id))
+      .returning();
+    return updated;
   }
 }
 

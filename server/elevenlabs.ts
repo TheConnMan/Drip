@@ -1,7 +1,7 @@
 import { log } from "./index";
 
 const DEFAULT_VOICE_ID = "iP95p4xoKVk53GoZ742B"; // Chris voice
-const MODEL_ID = "eleven_turbo_v2_5";
+const MODEL_ID = "eleven_flash_v2_5";
 const OUTPUT_FORMAT = "mp3_44100_128";
 const BYTES_PER_SECOND = 16000; // mp3 at 128kbps = 16000 bytes per second
 

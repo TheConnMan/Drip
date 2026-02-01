@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Sparkles, TrendingUp, Zap } from "lucide-react";
+import { Sparkles, TrendingUp, Clock } from "lucide-react";
 
 export default function Landing() {
   return (
@@ -74,12 +74,12 @@ export default function Landing() {
             </Card>
             <Card className="p-6 hover-elevate">
               <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center mb-4">
-                <Zap className="w-6 h-6 text-primary" />
+                <Clock className="w-6 h-6 text-primary" />
               </div>
-              <h3 className="text-lg font-semibold mb-2">Deep Dive Expansions</h3>
+              <h3 className="text-lg font-semibold mb-2">Bite-Sized Lessons</h3>
               <p className="text-muted-foreground text-sm">
-                Want to know more? Expand any topic with a single click for 
-                in-depth explanations and examples.
+                Each lesson is designed to take just 5 minutes. Learn at your own pace
+                without feeling overwhelmed.
               </p>
             </Card>
           </div>

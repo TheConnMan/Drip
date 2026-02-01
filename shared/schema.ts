@@ -70,15 +70,6 @@ export const courseResearch = pgTable("course_research", {
   completedAt: timestamp("completed_at"),
 });
 
-// Topic expansions for lessons
-export const topicExpansions = pgTable("topic_expansions", {
-  id: serial("id").primaryKey(),
-  lessonId: integer("lesson_id").notNull().references(() => lessons.id, { onDelete: "cascade" }),
-  topic: text("topic").notNull(),
-  content: text("content").notNull(),
-  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
-});
-
 // Insert schemas
 export const insertCourseSchema = createInsertSchema(courses).omit({
   id: true,
@@ -93,11 +84,6 @@ export const insertLessonSchema = createInsertSchema(lessons).omit({
 
 export const insertLessonProgressSchema = createInsertSchema(lessonProgress).omit({
   id: true,
-});
-
-export const insertTopicExpansionSchema = createInsertSchema(topicExpansions).omit({
-  id: true,
-  createdAt: true,
 });
 
 export const insertLessonFeedbackSchema = createInsertSchema(lessonFeedback).omit({
@@ -117,8 +103,6 @@ export type Lesson = typeof lessons.$inferSelect;
 export type InsertLesson = z.infer<typeof insertLessonSchema>;
 export type LessonProgress = typeof lessonProgress.$inferSelect;
 export type InsertLessonProgress = z.infer<typeof insertLessonProgressSchema>;
-export type TopicExpansion = typeof topicExpansions.$inferSelect;
-export type InsertTopicExpansion = z.infer<typeof insertTopicExpansionSchema>;
 export type LessonFeedback = typeof lessonFeedback.$inferSelect;
 export type InsertLessonFeedback = z.infer<typeof insertLessonFeedbackSchema>;
 export type CourseResearch = typeof courseResearch.$inferSelect;

@@ -1,8 +1,8 @@
 import { db } from "./db";
 import {
-  courses, lessons, lessonProgress, topicExpansions, lessonFeedback, courseResearch,
+  courses, lessons, lessonProgress, lessonFeedback, courseResearch,
   type Course, type InsertCourse, type Lesson, type InsertLesson,
-  type LessonProgress, type InsertLessonProgress, type TopicExpansion, type InsertTopicExpansion,
+  type LessonProgress, type InsertLessonProgress,
   type LessonFeedback, type InsertLessonFeedback, type CourseResearch, type InsertCourseResearch
 } from "@shared/schema";
 import { eq, and, desc, asc, sql, isNotNull } from "drizzle-orm";
@@ -31,10 +31,6 @@ export interface IStorage {
   getProgressByCourse(userId: string, courseId: number): Promise<LessonProgress[]>;
   markLessonComplete(userId: string, lessonId: number, courseId: number): Promise<LessonProgress>;
   getCompletedLessonsCount(userId: string, courseId: number): Promise<number>;
-  
-  // Expansions
-  getExpansionsByLesson(lessonId: number): Promise<TopicExpansion[]>;
-  createExpansion(expansion: InsertTopicExpansion): Promise<TopicExpansion>;
   
   // Feedback
   getFeedbackByCourse(courseId: number): Promise<LessonFeedback[]>;
@@ -233,20 +229,6 @@ export class DatabaseStorage implements IStorage {
         )
       );
     return Number(result[0]?.count || 0);
-  }
-
-  // Expansions
-  async getExpansionsByLesson(lessonId: number): Promise<TopicExpansion[]> {
-    return db
-      .select()
-      .from(topicExpansions)
-      .where(eq(topicExpansions.lessonId, lessonId))
-      .orderBy(asc(topicExpansions.createdAt));
-  }
-
-  async createExpansion(expansion: InsertTopicExpansion): Promise<TopicExpansion> {
-    const [newExpansion] = await db.insert(topicExpansions).values(expansion).returning();
-    return newExpansion;
   }
 
   // Feedback

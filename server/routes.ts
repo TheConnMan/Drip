@@ -743,7 +743,7 @@ Just write the lesson content, no meta text or introductions.`,
     }
   });
 
-  // Get a single lesson with expansions
+  // Get a single lesson
   app.get("/api/lessons/:id", isAuthenticated, async (req: any, res) => {
     try {
       const lessonId = parseInt(req.params.id);
@@ -755,19 +755,18 @@ Just write the lesson content, no meta text or introductions.`,
       }
 
       const course = await storage.getCourse(lesson.courseId);
-      
+
       // Verify ownership
       if (!course || course.userId !== userId) {
         return res.status(403).json({ error: "Access denied" });
       }
 
-      const expansions = await storage.getExpansionsByLesson(lessonId);
       const progress = await storage.getLessonProgress(userId, lessonId);
       const nextLesson = await storage.getNextLesson(lesson.courseId, lesson.sessionNumber);
 
       // If this lesson doesn't have content yet, return immediately and generate in background
       const needsGeneration = lesson.content === "PENDING_GENERATION" || lesson.content === "Content will be generated when you reach this lesson.";
-      
+
       if (needsGeneration) {
         // Return immediately with generating status so UI can show loading state
         res.json({
@@ -775,7 +774,6 @@ Just write the lesson content, no meta text or introductions.`,
           content: "PENDING_GENERATION",
           isGenerating: true,
           course,
-          expansions,
           isCompleted: progress?.isCompleted || false,
           nextLessonId: nextLesson?.id,
         });
@@ -891,7 +889,6 @@ Just write the lesson content and further reading, no meta text or preamble.`,
       res.json({
         ...lesson,
         course,
-        expansions,
         isCompleted: progress?.isCompleted || false,
         nextLessonId: nextLesson?.id,
       });
@@ -971,65 +968,6 @@ Just write the lesson content and further reading, no meta text or preamble.`,
     } catch (error) {
       console.error("Error saving feedback:", error);
       res.status(500).json({ error: "Failed to save feedback" });
-    }
-  });
-
-  // Expand a topic in a lesson
-  app.post("/api/lessons/:id/expand", isAuthenticated, async (req: any, res) => {
-    try {
-      const lessonId = parseInt(req.params.id);
-      const userId = req.user.claims.sub;
-      const { topic } = req.body;
-
-      if (!topic || typeof topic !== "string") {
-        return res.status(400).json({ error: "Topic is required" });
-      }
-
-      const lesson = await storage.getLesson(lessonId);
-      if (!lesson) {
-        return res.status(404).json({ error: "Lesson not found" });
-      }
-
-      // Verify ownership
-      const course = await storage.getCourse(lesson.courseId);
-      if (!course || course.userId !== userId) {
-        return res.status(403).json({ error: "Access denied" });
-      }
-
-      // Generate expansion with Claude
-      const expansionResponse = await anthropic.messages.create({
-        model: "claude-sonnet-4-5",
-        max_tokens: 1024,
-        messages: [
-          {
-            role: "user",
-            content: `The user is reading a lesson titled "${lesson.title}" and wants to learn more about: "${topic}"
-
-Write a focused deep-dive explanation (200-400 words) that:
-- Expands on this specific topic
-- Provides additional context, examples, or details
-- Uses clean markdown formatting
-- Is informative and engaging
-
-Just provide the expanded content, no meta text.`,
-          },
-        ],
-      });
-
-      const content = expansionResponse.content[0].type === "text" 
-        ? expansionResponse.content[0].text 
-        : "";
-
-      const expansion = await storage.createExpansion({
-        lessonId,
-        topic,
-        content,
-      });
-
-      res.json(expansion);
-    } catch (error) {
-      console.error("Error expanding topic:", error);
-      res.status(500).json({ error: "Failed to expand topic" });
     }
   });
 

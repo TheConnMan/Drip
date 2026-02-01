@@ -6,10 +6,10 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Clock, ChevronDown, ChevronUp, Sparkles, Check, Loader2, Menu, MessageSquare, X, Pencil } from "lucide-react";
+import { ArrowLeft, Clock, Check, Loader2, Menu, MessageSquare, Pencil } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { apiRequest } from "@/lib/queryClient";
-import type { Lesson, Course, TopicExpansion } from "@shared/schema";
+import type { Lesson, Course } from "@shared/schema";
 
 type CitationMap = Record<string, string>;
 
@@ -96,7 +96,6 @@ function LessonContent({ content, citationMap }: { content: string; citationMap?
 
 interface LessonDetail extends Lesson {
   course: Course;
-  expansions: TopicExpansion[];
   isCompleted: boolean;
   nextLessonId?: number;
   isGenerating?: boolean;
@@ -108,9 +107,6 @@ export default function LessonPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const [expandingTopic, setExpandingTopic] = useState<string | null>(null);
-  const [localExpansions, setLocalExpansions] = useState<TopicExpansion[]>([]);
-  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const [isEditingFeedback, setIsEditingFeedback] = useState(false);
   const [feedbackText, setFeedbackText] = useState("");
 
@@ -160,37 +156,6 @@ export default function LessonPage() {
       toast({ title: "Failed to save feedback", variant: "destructive" });
     },
   });
-
-  const expandMutation = useMutation({
-    mutationFn: async (topic: string) => {
-      setExpandingTopic(topic);
-      const response = await apiRequest("POST", `/api/lessons/${lessonId}/expand`, { topic });
-      return response.json();
-    },
-    onSuccess: (data: TopicExpansion) => {
-      setLocalExpansions(prev => [...prev, data]);
-      setExpandedIds(prev => new Set([...Array.from(prev), data.id]));
-      setExpandingTopic(null);
-    },
-    onError: () => {
-      toast({ title: "Failed to expand topic", variant: "destructive" });
-      setExpandingTopic(null);
-    },
-  });
-
-  const allExpansions = [...(lesson?.expansions || []), ...localExpansions];
-
-  const toggleExpansion = (id: number) => {
-    setExpandedIds(prev => {
-      const newSet = new Set(Array.from(prev));
-      if (newSet.has(id)) {
-        newSet.delete(id);
-      } else {
-        newSet.add(id);
-      }
-      return newSet;
-    });
-  };
 
   const handleFeedbackSubmit = () => {
     if (!feedbackText.trim()) return;
@@ -288,63 +253,6 @@ export default function LessonPage() {
             <LessonContent content={lesson.content} citationMap={lesson.citationMap} />
           </article>
         )}
-
-        {allExpansions.length > 0 && (
-          <div className="space-y-3 mb-8" data-testid="expansions-list">
-            {allExpansions.map(expansion => (
-              <Card key={expansion.id} className="overflow-hidden">
-                <button
-                  onClick={() => toggleExpansion(expansion.id)}
-                  className="w-full p-4 flex items-center justify-between text-left hover-elevate"
-                  data-testid={`button-expansion-toggle-${expansion.id}`}
-                >
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-primary" />
-                    <span className="font-medium">{expansion.topic}</span>
-                  </div>
-                  {expandedIds.has(expansion.id) ? (
-                    <ChevronUp className="w-5 h-5 text-muted-foreground" />
-                  ) : (
-                    <ChevronDown className="w-5 h-5 text-muted-foreground" />
-                  )}
-                </button>
-                {expandedIds.has(expansion.id) && (
-                  <div className="px-4 pb-4 pt-0 border-t border-border/50">
-                    <div className="prose-lesson text-sm pt-4" data-testid={`expansion-content-${expansion.id}`}>
-                      <ReactMarkdown>{expansion.content}</ReactMarkdown>
-                    </div>
-                  </div>
-                )}
-              </Card>
-            ))}
-          </div>
-        )}
-
-        <div className="space-y-3 mb-8">
-          <Button
-            variant="outline"
-            className="w-full justify-start gap-2"
-            onClick={() => {
-              const selection = window.getSelection()?.toString().trim();
-              const topicToExpand = selection && selection.length > 2 && selection.length < 200
-                ? selection
-                : lesson.title;
-              expandMutation.mutate(topicToExpand);
-            }}
-            disabled={expandMutation.isPending || isGeneratingContent}
-            data-testid="button-expand-topic"
-          >
-            {expandMutation.isPending ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Sparkles className="w-4 h-4" />
-            )}
-            <span>{expandingTopic ? `Expanding: ${expandingTopic.substring(0, 30)}...` : "Expand This Topic"}</span>
-          </Button>
-          <p className="text-xs text-muted-foreground text-center">
-            Select text to expand a specific topic, or click to dive deeper into the lesson
-          </p>
-        </div>
 
         <Card className="p-4 mb-8" data-testid="card-feedback">
           <div className="flex items-center justify-between mb-3">

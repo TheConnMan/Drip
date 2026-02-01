@@ -3,6 +3,17 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { isAuthenticated } from "./replit_integrations/auth";
 import Anthropic from "@anthropic-ai/sdk";
+import { conductDeepResearch, Citation } from "./perplexity";
+
+function calculateConfidenceScore(content: string, citations: Citation[]): number {
+  const wordCount = content.split(/\s+/).length;
+  const citationDensity = (citations.length / wordCount) * 100; // citations per 100 words
+  const densityScore = Math.min(40, citationDensity * 10); // up to 40 points
+  const uniqueDomains = new Set(citations.map(c => c.domain)).size;
+  const diversityScore = Math.min(30, uniqueDomains * 5); // up to 30 points for domain diversity
+  const sourceScore = Math.min(30, citations.length * 3); // up to 30 points for total sources
+  return Math.round(densityScore + diversityScore + sourceScore);
+}
 
 const anthropic = new Anthropic({
   apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY,
@@ -44,12 +55,17 @@ export async function registerRoutes(
       const lessons = await storage.getLessonsByCourse(courseId);
       const progress = await storage.getProgressByCourse(userId, courseId);
       const completedLessons = await storage.getCompletedLessonsCount(userId, courseId);
+      const research = await storage.getCourseResearch(courseId);
 
       res.json({
         ...course,
         lessons,
         progress,
         completedLessons,
+        research: research ? {
+          status: research.status,
+          confidenceScore: research.confidenceScore,
+        } : null,
       });
     } catch (error) {
       console.error("Error fetching course:", error);
@@ -240,22 +256,98 @@ Only respond with valid JSON, no other text.`;
         }
       }
 
-      // Kick off first lesson generation in background
+      // Kick off research and first lesson generation in background
+      // Research runs first (if API key available), then first lesson generates with research context
+      const courseId = course.id;
       if (firstLessonId) {
         const lessonId = firstLessonId;
         (async () => {
+          let researchCitations: Citation[] = [];
+          let researchContent = "";
+          let researchCompleted = false;
+
+          // Step 1: Run research if API key is available
+          if (process.env.PERPLEXITY_API_KEY) {
+            try {
+              // Create research record with pending status
+              const research = await storage.createCourseResearch({
+                courseId,
+                status: "pending",
+                researchContent: "",
+                citations: "[]",
+              });
+
+              // Update to generating status
+              await storage.updateCourseResearch(research.id, { status: "generating" });
+              console.log(`Starting deep research for course ${courseId}`);
+
+              const researchResult = await conductDeepResearch(outline.description || outline.title);
+
+              // Calculate confidence score
+              const confidenceScore = calculateConfidenceScore(researchResult.content, researchResult.citations);
+
+              // Update with completed research
+              await storage.updateCourseResearch(research.id, {
+                status: "completed",
+                researchContent: researchResult.content,
+                citations: JSON.stringify(researchResult.citations),
+                confidenceScore,
+                completedAt: new Date(),
+              });
+              console.log(`Deep research completed for course ${courseId} with ${researchResult.citations.length} citations`);
+
+              // Store for use in lesson generation
+              researchCitations = researchResult.citations;
+              researchContent = researchResult.content;
+              researchCompleted = true;
+            } catch (error) {
+              console.error(`Error generating research for course ${courseId}:`, error);
+              // Try to update status to failed if research record exists
+              try {
+                const existingResearch = await storage.getCourseResearch(courseId);
+                if (existingResearch) {
+                  await storage.updateCourseResearch(existingResearch.id, {
+                    status: "failed",
+                    errorMessage: error instanceof Error ? error.message : String(error),
+                  });
+                }
+              } catch (updateError) {
+                console.error(`Failed to update research status:`, updateError);
+              }
+              // Continue to lesson generation even if research failed
+            }
+          }
+
+          // Step 2: Generate first lesson (with research context if available)
           try {
             const lesson = await storage.getLesson(lessonId);
             if (!lesson) return;
-            
+
             // Skip if content was already generated (race condition protection)
             if (lesson.content !== "PENDING_GENERATION") {
               console.log(`Lesson ${lessonId} already has content, skipping pre-generation`);
               return;
             }
-            
+
             console.log(`Pre-generating first lesson for course ${course.id}`);
-            
+
+            // Build research context if research completed successfully
+            let researchContext = "";
+            if (researchCompleted && researchContent) {
+              researchContext = `
+
+## Research Context
+${researchContent}
+
+## Available Sources
+${researchCitations.map((c, i) => `[${i + 1}] ${c.url}`).join("\n")}
+
+When relevant, cite sources using [N] inline notation.`;
+              console.log(`Using research with ${researchCitations.length} citations for lesson ${lessonId}`);
+            } else {
+              console.log(`Research not available for lesson ${lessonId}, proceeding without`);
+            }
+
             const contentResponse = await anthropic.messages.create({
               model: "claude-sonnet-4-5",
               max_tokens: 2048,
@@ -264,7 +356,7 @@ Only respond with valid JSON, no other text.`;
                   role: "user",
                   content: `Write a 5-minute educational lesson for: "${lesson.title}"
 This is part of a course on: "${course.title}"
-Session 1 of ${course.totalLessons}.
+Session 1 of ${course.totalLessons}.${researchContext}
 
 Write professional, well-researched educational content that:
 - Is written at a high school reading level (clear and accessible)
@@ -286,11 +378,34 @@ Just write the lesson content and further reading, no meta text or preamble.`,
               ],
             });
 
-            const content = contentResponse.content[0].type === "text" 
-              ? contentResponse.content[0].text 
+            let content = contentResponse.content[0].type === "text"
+              ? contentResponse.content[0].text
               : "";
 
-            await storage.updateLesson(lessonId, { content });
+            // Extract used citations and build citation map
+            let citationMap: Record<number, string> | null = null;
+            if (researchCompleted && researchCitations.length > 0) {
+              const usedCitations = new Set<number>();
+              const matches = Array.from(content.matchAll(/\[(\d+)\]/g));
+              for (const match of matches) {
+                usedCitations.add(parseInt(match[1]));
+              }
+              if (usedCitations.size > 0) {
+                citationMap = {};
+                const citationNums = Array.from(usedCitations);
+                for (const citNum of citationNums) {
+                  const citation = researchCitations[citNum - 1]; // citations are 1-indexed in content
+                  if (citation) {
+                    citationMap[citNum] = citation.url;
+                  }
+                }
+              }
+            }
+
+            await storage.updateLesson(lessonId, {
+              content,
+              citationMap: citationMap ? JSON.stringify(citationMap) : null,
+            });
             console.log(`Pre-generated first lesson ${lessonId} for course ${course.id}`);
           } catch (error) {
             console.error(`Error pre-generating first lesson:`, error);
@@ -557,13 +672,33 @@ Just write the lesson content, no meta text or introductions.`,
               console.log(`Lesson ${lessonId} already generated, skipping`);
               return;
             }
-            
+
             const allFeedback = await storage.getFeedbackByCourse(lesson.courseId);
             const recentFeedback = allFeedback.slice(-3).map(f => f.feedback).join("\n- ");
-            
+
             let feedbackContext = "";
             if (recentFeedback) {
               feedbackContext = `\n\nThe learner has provided this feedback on previous lessons that you should incorporate:\n- ${recentFeedback}`;
+            }
+
+            // Check if research is available (don't block, just use if ready)
+            let researchContext = "";
+            let researchCitations: Citation[] = [];
+            const research = await storage.getCourseResearch(lesson.courseId);
+            if (research && research.status === "completed") {
+              researchCitations = JSON.parse(research.citations || "[]");
+              researchContext = `
+
+## Research Context
+${research.researchContent}
+
+## Available Sources
+${researchCitations.map((c, i) => `[${i + 1}] ${c.url}`).join("\n")}
+
+When relevant, cite sources using [N] inline notation.`;
+              console.log(`Using research with ${researchCitations.length} citations for lesson ${lessonId}`);
+            } else {
+              console.log(`Research not yet available for lesson ${lessonId}, proceeding without`);
             }
 
             const contentResponse = await anthropic.messages.create({
@@ -574,7 +709,7 @@ Just write the lesson content, no meta text or introductions.`,
                   role: "user",
                   content: `Write a 5-minute educational lesson for: "${lesson.title}"
 This is part of a course on: "${course?.title}"
-Session ${lesson.sessionNumber} of ${course?.totalLessons}.${feedbackContext}
+Session ${lesson.sessionNumber} of ${course?.totalLessons}.${feedbackContext}${researchContext}
 
 Write professional, well-researched educational content that:
 - Is written at a high school reading level (clear and accessible)
@@ -596,11 +731,34 @@ Just write the lesson content and further reading, no meta text or preamble.`,
               ],
             });
 
-            const content = contentResponse.content[0].type === "text" 
-              ? contentResponse.content[0].text 
+            let content = contentResponse.content[0].type === "text"
+              ? contentResponse.content[0].text
               : "";
 
-            await storage.updateLesson(lessonId, { content });
+            // Extract used citations and build citation map
+            let citationMap: Record<number, string> | null = null;
+            if (research && research.status === "completed" && researchCitations.length > 0) {
+              const usedCitations = new Set<number>();
+              const matches = Array.from(content.matchAll(/\[(\d+)\]/g));
+              for (const match of matches) {
+                usedCitations.add(parseInt(match[1]));
+              }
+              if (usedCitations.size > 0) {
+                citationMap = {};
+                const citationNums = Array.from(usedCitations);
+                for (const citNum of citationNums) {
+                  const citation = researchCitations[citNum - 1]; // citations are 1-indexed in content
+                  if (citation) {
+                    citationMap[citNum] = citation.url;
+                  }
+                }
+              }
+            }
+
+            await storage.updateLesson(lessonId, {
+              content,
+              citationMap: citationMap ? JSON.stringify(citationMap) : null,
+            });
             console.log(`Generated content for lesson ${lessonId}`);
           } catch (error) {
             console.error(`Error generating lesson ${lessonId}:`, error);

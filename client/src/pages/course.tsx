@@ -22,15 +22,21 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { ArrowLeft, BookOpen, CheckCircle2, Circle, Lock, MoreVertical, Archive, Trash2 } from "lucide-react";
+import { ArrowLeft, BookOpen, CheckCircle2, Circle, Lock, MoreVertical, Archive, Trash2, Loader2, Sparkles } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Course, Lesson, LessonProgress } from "@shared/schema";
+
+interface CourseResearchSummary {
+  status: string;
+  confidenceScore: number | null;
+}
 
 interface CourseDetail extends Course {
   lessons: Lesson[];
   progress: LessonProgress[];
   completedLessons: number;
+  research: CourseResearchSummary | null;
 }
 
 export default function CoursePage() {
@@ -168,6 +174,21 @@ export default function CoursePage() {
             </div>
           </div>
           <Progress value={progressPercent} className="mt-4 h-2" data-testid="progress-bar" />
+          {course.research && (
+            <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+              {course.research.status === "generating" || course.research.status === "pending" ? (
+                <>
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  <span>Researching...</span>
+                </>
+              ) : course.research.status === "completed" && course.research.confidenceScore !== null ? (
+                <>
+                  <Sparkles className="w-3 h-3" />
+                  <span>Research Quality: {course.research.confidenceScore}%</span>
+                </>
+              ) : null}
+            </div>
+          )}
         </Card>
 
         <div className="space-y-3">

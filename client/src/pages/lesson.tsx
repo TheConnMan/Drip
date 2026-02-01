@@ -11,6 +11,89 @@ import ReactMarkdown from "react-markdown";
 import { apiRequest } from "@/lib/queryClient";
 import type { Lesson, Course, TopicExpansion } from "@shared/schema";
 
+type CitationMap = Record<string, string>;
+
+function CitationBadge({ num, url }: { num: string; url: string }) {
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center justify-center w-4 h-4 text-[10px] font-medium bg-muted hover:bg-muted/80 text-muted-foreground rounded-full align-super ml-0.5 no-underline transition-colors"
+      title={`Source ${num}`}
+    >
+      {num}
+    </a>
+  );
+}
+
+function renderTextWithCitations(text: string, citations: CitationMap): React.ReactNode {
+  if (Object.keys(citations).length === 0) {
+    return text;
+  }
+
+  // Split text by citation patterns [N]
+  const parts = text.split(/(\[\d+\])/g);
+
+  return parts.map((part, index) => {
+    const match = part.match(/^\[(\d+)\]$/);
+    if (match) {
+      const num = match[1];
+      const url = citations[num];
+      if (url) {
+        return <CitationBadge key={index} num={num} url={url} />;
+      }
+    }
+    return part;
+  });
+}
+
+function LessonContent({ content, citationMap }: { content: string; citationMap?: string | null }) {
+  // Parse citation map if present
+  const citations: CitationMap = citationMap ? (() => {
+    try {
+      return JSON.parse(citationMap) as CitationMap;
+    } catch {
+      return {};
+    }
+  })() : {};
+
+  const hasCitations = Object.keys(citations).length > 0;
+
+  if (!hasCitations) {
+    return <ReactMarkdown>{content}</ReactMarkdown>;
+  }
+
+  // Use ReactMarkdown with custom text rendering to handle citations
+  return (
+    <ReactMarkdown
+      components={{
+        // Override text rendering to inject citation badges
+        p: ({ children }) => {
+          const processChildren = (child: React.ReactNode): React.ReactNode => {
+            if (typeof child === 'string') {
+              return renderTextWithCitations(child, citations);
+            }
+            return child;
+          };
+          return <p>{Array.isArray(children) ? children.map(processChildren) : processChildren(children)}</p>;
+        },
+        li: ({ children }) => {
+          const processChildren = (child: React.ReactNode): React.ReactNode => {
+            if (typeof child === 'string') {
+              return renderTextWithCitations(child, citations);
+            }
+            return child;
+          };
+          return <li>{Array.isArray(children) ? children.map(processChildren) : processChildren(children)}</li>;
+        },
+      }}
+    >
+      {content}
+    </ReactMarkdown>
+  );
+}
+
 interface LessonDetail extends Lesson {
   course: Course;
   expansions: TopicExpansion[];
@@ -197,7 +280,7 @@ export default function LessonPage() {
           </Card>
         ) : (
           <article className="prose-lesson mb-8" data-testid="lesson-content">
-            <ReactMarkdown>{lesson.content}</ReactMarkdown>
+            <LessonContent content={lesson.content} citationMap={lesson.citationMap} />
           </article>
         )}
 

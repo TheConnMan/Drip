@@ -41,6 +41,11 @@ PostgreSQL with Drizzle ORM. Schema in `shared/schema.ts`, config in `drizzle.co
 
 Core tables: `courses`, `lessons`, `lesson_progress`, `lesson_feedback`, `topic_expansions`, `users`, `sessions`
 
+**Schema changes**: `npm run db:push` requires interactive input for column decisions. For CI/automation, add columns directly via psql:
+```bash
+psql $DATABASE_URL -c "ALTER TABLE tablename ADD COLUMN IF NOT EXISTS colname TYPE;"
+```
+
 ### Authentication
 - **On Replit**: OpenID Connect via Replit Auth (requires `REPL_ID` env var)
 - **Local dev**: When `REPL_ID` is not set, auth is bypassed with auto-login as test user

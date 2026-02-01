@@ -4,6 +4,10 @@ import { storage } from "./storage";
 import { isAuthenticated } from "./replit_integrations/auth";
 import Anthropic from "@anthropic-ai/sdk";
 import { conductDeepResearch, Citation } from "./perplexity";
+import { v4 as uuidv4 } from "uuid";
+import { generateSpeech } from "./elevenlabs";
+import { uploadAudio, downloadAudio } from "./objectStorage";
+import { generateRssFeed } from "./rss";
 
 function calculateConfidenceScore(content: string, citations: Citation[]): number {
   const wordCount = content.split(/\s+/).length;
@@ -20,10 +24,119 @@ const anthropic = new Anthropic({
   baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL,
 });
 
+/**
+ * Strips markdown formatting from text for TTS
+ */
+function stripMarkdown(text: string): string {
+  return text
+    // Remove images first (before links)
+    .replace(/!\[[^\]]*\]\([^)]+\)/g, "")
+    // Convert links to just text
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    // Remove headers
+    .replace(/^#{1,6}\s+/gm, "")
+    // Remove bold/italic
+    .replace(/(\*\*|__)(.*?)\1/g, "$2")
+    .replace(/(\*|_)(.*?)\1/g, "$2")
+    // Remove code blocks
+    .replace(/```[\s\S]*?```/g, "")
+    .replace(/`([^`]+)`/g, "$1")
+    // Remove blockquotes
+    .replace(/^>\s+/gm, "")
+    // Remove horizontal rules
+    .replace(/^[-*_]{3,}$/gm, "")
+    // Clean up extra whitespace
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/**
+ * Generates audio for a lesson in the background (fire and forget)
+ */
+async function generateLessonAudio(lessonId: number): Promise<void> {
+  // Skip audio generation if ElevenLabs not configured
+  if (!process.env.ELEVENLABS_API_KEY) {
+    return;
+  }
+
+  try {
+    const lesson = await storage.getLesson(lessonId);
+    if (!lesson || !lesson.content || lesson.audioStorageKey) return;
+    if (lesson.content === "PENDING_GENERATION") return;
+
+    const plainText = stripMarkdown(lesson.content);
+    const { audioBuffer, durationSeconds } = await generateSpeech(plainText);
+
+    const storageKey = `audio/lesson-${lessonId}.mp3`;
+    await uploadAudio(storageKey, audioBuffer);
+
+    await storage.updateLesson(lessonId, {
+      audioStorageKey: storageKey,
+      audioDurationSeconds: Math.round(durationSeconds),
+      audioFileSize: audioBuffer.length,
+      audioGeneratedAt: new Date(),
+    });
+    console.log(`Audio generated for lesson ${lessonId}`);
+  } catch (error) {
+    console.error(`Failed to generate audio for lesson ${lessonId}:`, error);
+  }
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  // PUBLIC ROUTES (no authentication required)
+
+  // RSS feed for a course by UUID
+  app.get("/feed/:uuid.xml", async (req, res) => {
+    try {
+      const { uuid } = req.params;
+      const course = await storage.getCourseByRssFeedUuid(uuid);
+
+      if (!course) {
+        return res.status(404).send("Feed not found");
+      }
+
+      const lessons = await storage.getLessonsWithAudio(course.id);
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
+      const rssFeed = generateRssFeed(course, lessons, baseUrl);
+
+      res.set("Content-Type", "application/rss+xml; charset=utf-8");
+      res.send(rssFeed);
+    } catch (error) {
+      console.error("Error generating RSS feed:", error);
+      res.status(500).send("Failed to generate feed");
+    }
+  });
+
+  // Audio file proxy for lessons
+  app.get("/audio/:lessonId", async (req, res) => {
+    try {
+      const lessonId = parseInt(req.params.lessonId);
+      if (isNaN(lessonId)) {
+        return res.status(400).send("Invalid lesson ID");
+      }
+
+      const lesson = await storage.getLesson(lessonId);
+      if (!lesson || !lesson.audioStorageKey) {
+        return res.status(404).send("Audio not found");
+      }
+
+      const audioBuffer = await downloadAudio(lesson.audioStorageKey);
+
+      res.set("Content-Type", "audio/mpeg");
+      res.set("Content-Length", audioBuffer.length.toString());
+      res.set("Accept-Ranges", "bytes");
+      res.send(audioBuffer);
+    } catch (error) {
+      console.error("Error serving audio:", error);
+      res.status(500).send("Failed to serve audio");
+    }
+  });
+
+  // AUTHENTICATED ROUTES
+
   // Get all courses for current user
   app.get("/api/courses", isAuthenticated, async (req: any, res) => {
     try {
@@ -231,13 +344,14 @@ Only respond with valid JSON, no other text.`;
 
       console.log("Building course from outline:", outline.title);
 
-      // Create the course
+      // Create the course with RSS feed UUID
       const course = await storage.createCourse({
         userId,
         title: outline.title,
         description: outline.description,
         totalLessons: outline.sessions.length,
         isCompleted: false,
+        rssFeedUuid: uuidv4(),
       });
 
       // Create all lessons with placeholder content - will be generated on-demand
@@ -407,6 +521,9 @@ Just write the lesson content and further reading, no meta text or preamble.`,
               citationMap: citationMap ? JSON.stringify(citationMap) : null,
             });
             console.log(`Pre-generated first lesson ${lessonId} for course ${course.id}`);
+
+            // Fire and forget audio generation
+            generateLessonAudio(lessonId);
           } catch (error) {
             console.error(`Error pre-generating first lesson:`, error);
           }
@@ -760,11 +877,14 @@ Just write the lesson content and further reading, no meta text or preamble.`,
               citationMap: citationMap ? JSON.stringify(citationMap) : null,
             });
             console.log(`Generated content for lesson ${lessonId}`);
+
+            // Fire and forget audio generation
+            generateLessonAudio(lessonId);
           } catch (error) {
             console.error(`Error generating lesson ${lessonId}:`, error);
           }
         })();
-        
+
         return;
       }
 

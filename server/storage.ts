@@ -5,11 +5,12 @@ import {
   type LessonProgress, type InsertLessonProgress, type TopicExpansion, type InsertTopicExpansion,
   type LessonFeedback, type InsertLessonFeedback, type CourseResearch, type InsertCourseResearch
 } from "@shared/schema";
-import { eq, and, desc, asc, sql } from "drizzle-orm";
+import { eq, and, desc, asc, sql, isNotNull } from "drizzle-orm";
 
 export interface IStorage {
   // Courses
   getCourse(id: number): Promise<Course | undefined>;
+  getCourseByRssFeedUuid(uuid: string): Promise<Course | undefined>;
   getCoursesByUser(userId: string): Promise<(Course & { completedLessons: number })[]>;
   createCourse(course: InsertCourse): Promise<Course>;
   updateCourse(id: number, data: Partial<InsertCourse>): Promise<Course | undefined>;
@@ -20,6 +21,7 @@ export interface IStorage {
   // Lessons
   getLesson(id: number): Promise<Lesson | undefined>;
   getLessonsByCourse(courseId: number): Promise<Lesson[]>;
+  getLessonsWithAudio(courseId: number): Promise<Lesson[]>;
   createLesson(lesson: InsertLesson): Promise<Lesson>;
   updateLesson(id: number, data: Partial<InsertLesson>): Promise<Lesson | undefined>;
   getNextLesson(courseId: number, currentSessionNumber: number): Promise<Lesson | undefined>;
@@ -48,6 +50,11 @@ export class DatabaseStorage implements IStorage {
   // Courses
   async getCourse(id: number): Promise<Course | undefined> {
     const [course] = await db.select().from(courses).where(eq(courses.id, id));
+    return course;
+  }
+
+  async getCourseByRssFeedUuid(uuid: string): Promise<Course | undefined> {
+    const [course] = await db.select().from(courses).where(eq(courses.rssFeedUuid, uuid));
     return course;
   }
 
@@ -118,6 +125,19 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(lessons)
       .where(eq(lessons.courseId, courseId))
+      .orderBy(asc(lessons.sessionNumber));
+  }
+
+  async getLessonsWithAudio(courseId: number): Promise<Lesson[]> {
+    return db
+      .select()
+      .from(lessons)
+      .where(
+        and(
+          eq(lessons.courseId, courseId),
+          isNotNull(lessons.audioStorageKey)
+        )
+      )
       .orderBy(asc(lessons.sessionNumber));
   }
 

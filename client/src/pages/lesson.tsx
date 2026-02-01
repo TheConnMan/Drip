@@ -268,6 +268,9 @@ export default function LessonPage() {
             </span>
           </div>
           <h1 className="text-2xl font-bold" data-testid="text-lesson-title">{lesson.title}</h1>
+          {lesson.audioStorageKey && (
+            <audio controls src={`/audio/${lesson.id}`} className="w-full mt-4" />
+          )}
         </div>
 
         {isGeneratingContent ? (

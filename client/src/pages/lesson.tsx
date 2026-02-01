@@ -262,10 +262,12 @@ export default function LessonPage() {
             <span className="text-primary font-medium" data-testid="text-session-info">
               LESSON {lesson.sessionNumber} OF {lesson.course.totalLessons}
             </span>
-            <span className="text-muted-foreground flex items-center gap-1">
-              <Clock className="w-4 h-4" />
-              {lesson.estimatedMinutes} min read
-            </span>
+{lesson.audioDurationSeconds && (
+              <span className="text-muted-foreground flex items-center gap-1">
+                <Clock className="w-4 h-4" />
+                {Math.ceil(lesson.audioDurationSeconds / 60)} min
+              </span>
+            )}
           </div>
           <h1 className="text-2xl font-bold" data-testid="text-lesson-title">{lesson.title}</h1>
           {lesson.audioStorageKey && (

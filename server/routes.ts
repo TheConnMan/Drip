@@ -788,12 +788,22 @@ Just write the lesson content, no meta text or introductions.`,
               return;
             }
 
-            const allFeedback = await storage.getFeedbackByCourse(lesson.courseId);
-            const recentFeedback = allFeedback.slice(-3).map(f => f.feedback).join("\n- ");
-
             let feedbackContext = "";
-            if (recentFeedback) {
-              feedbackContext = `\n\nThe learner has provided this feedback on previous lessons that you should incorporate:\n- ${recentFeedback}`;
+            if (lesson.sessionNumber > 1) {
+              // Get the previous lesson
+              const courseLessons = await storage.getLessonsByCourse(lesson.courseId);
+              const previousLesson = courseLessons.find(l => l.sessionNumber === lesson.sessionNumber - 1);
+
+              if (previousLesson) {
+                // Get feedback for that specific lesson
+                const allFeedback = await storage.getFeedbackByCourse(lesson.courseId);
+                const previousLessonFeedback = allFeedback.filter(f => f.lessonId === previousLesson.id);
+
+                if (previousLessonFeedback.length > 0) {
+                  const feedbackList = previousLessonFeedback.map(f => `- "${f.feedback}"`).join("\n");
+                  feedbackContext = `\n\nThe learner left the following questions and comments on the previous lesson (Lesson ${previousLesson.sessionNumber}: "${previousLesson.title}"). Please address these in this lesson where relevant:\n\n${feedbackList}`;
+                }
+              }
             }
 
             // Check if research is available (don't block, just use if ready)

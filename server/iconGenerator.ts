@@ -42,7 +42,7 @@ async function generateImagePrompt(title: string, description: string): Promise<
 }
 
 /**
- * Generates an image using GPT Image 1 (gpt-image-1)
+ * Generates an image using DALL-E 3
  */
 async function generateImage(prompt: string): Promise<Buffer> {
   const openaiApiKey = process.env.OPENAI_API_KEY;
@@ -51,7 +51,7 @@ async function generateImage(prompt: string): Promise<Buffer> {
   }
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+  const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout for DALL-E 3
 
   try {
     const response = await fetch("https://api.openai.com/v1/images/generations", {
@@ -61,11 +61,11 @@ async function generateImage(prompt: string): Promise<Buffer> {
         "Authorization": `Bearer ${openaiApiKey}`,
       },
       body: JSON.stringify({
-        model: "gpt-image-1",
+        model: "dall-e-3",
         prompt: prompt,
         n: 1,
         size: "1024x1024",
-        quality: "low",
+        quality: "hd",
       }),
       signal: controller.signal,
     });
@@ -79,16 +79,16 @@ async function generateImage(prompt: string): Promise<Buffer> {
 
     const data = await response.json();
 
-    // GPT Image 1 returns base64 data
-    if (data.data?.[0]?.b64_json) {
-      return Buffer.from(data.data[0].b64_json, "base64");
-    }
-
-    // Fallback: if URL is returned, fetch it
+    // DALL-E 3 returns a URL
     if (data.data?.[0]?.url) {
       const imageResponse = await fetch(data.data[0].url);
       const arrayBuffer = await imageResponse.arrayBuffer();
       return Buffer.from(arrayBuffer);
+    }
+
+    // Fallback: if base64 is returned
+    if (data.data?.[0]?.b64_json) {
+      return Buffer.from(data.data[0].b64_json, "base64");
     }
 
     throw new Error("No image data in OpenAI response");

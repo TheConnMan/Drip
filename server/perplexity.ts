@@ -36,6 +36,12 @@ function extractDomain(url: string): string {
 }
 
 export async function conductDeepResearch(topic: string): Promise<DeepResearchResult> {
+  if (process.env.SKIP_RESEARCH) {
+    log("Skipping Perplexity research (SKIP_RESEARCH enabled), simulating 20s delay", "perplexity");
+    await new Promise(resolve => setTimeout(resolve, 20000));
+    return { content: "", citations: [] };
+  }
+
   const apiKey = process.env.PERPLEXITY_API_KEY;
   if (!apiKey) {
     throw new Error("PERPLEXITY_API_KEY environment variable is not set");

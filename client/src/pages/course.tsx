@@ -48,6 +48,14 @@ export default function CoursePage() {
 
   const { data: course, isLoading } = useQuery<CourseDetail>({
     queryKey: ["/api/courses", id],
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      // Poll every 2 seconds while research is in progress
+      if (data?.research?.status === "generating" || data?.research?.status === "pending") {
+        return 2000;
+      }
+      return false;
+    },
   });
 
   const handleCopyRssFeed = async () => {
@@ -219,7 +227,10 @@ export default function CoursePage() {
           {course.lessons.map((lesson, index) => {
             const isCompleted = completedLessonIds.has(lesson.id);
             const previousCompleted = index === 0 || completedLessonIds.has(course.lessons[index - 1].id);
-            const isAccessible = index === 0 || previousCompleted;
+            const researchInProgress = course.research?.status === "generating" || course.research?.status === "pending";
+            const isAccessible = index === 0
+              ? !researchInProgress  // First lesson locked until research done
+              : previousCompleted;
             const isCurrent = !isCompleted && previousCompleted;
 
             return (

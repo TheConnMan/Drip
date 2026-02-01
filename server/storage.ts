@@ -16,24 +16,29 @@ export interface IStorage {
   deleteCourse(id: number): Promise<void>;
   archiveCourse(id: number): Promise<Course | undefined>;
   unarchiveCourse(id: number): Promise<Course | undefined>;
-  
+
   // Lessons
   getLesson(id: number): Promise<Lesson | undefined>;
   getLessonsByCourse(courseId: number): Promise<Lesson[]>;
   createLesson(lesson: InsertLesson): Promise<Lesson>;
   updateLesson(id: number, data: Partial<InsertLesson>): Promise<Lesson | undefined>;
   getNextLesson(courseId: number, currentSessionNumber: number): Promise<Lesson | undefined>;
-  
+
+  // Audio
+  updateLessonAudio(id: number, audioUrl: string, durationSeconds: number, fileSize: number): Promise<Lesson | undefined>;
+  getLessonsNeedingAudio(): Promise<Lesson[]>;
+  getLessonsWithAudio(courseId: number): Promise<Lesson[]>;
+
   // Progress
   getLessonProgress(userId: string, lessonId: number): Promise<LessonProgress | undefined>;
   getProgressByCourse(userId: string, courseId: number): Promise<LessonProgress[]>;
   markLessonComplete(userId: string, lessonId: number, courseId: number): Promise<LessonProgress>;
   getCompletedLessonsCount(userId: string, courseId: number): Promise<number>;
-  
+
   // Expansions
   getExpansionsByLesson(lessonId: number): Promise<TopicExpansion[]>;
   createExpansion(expansion: InsertTopicExpansion): Promise<TopicExpansion>;
-  
+
   // Feedback
   getFeedbackByCourse(courseId: number): Promise<LessonFeedback[]>;
   createFeedback(feedback: InsertLessonFeedback): Promise<LessonFeedback>;
@@ -143,6 +148,42 @@ export class DatabaseStorage implements IStorage {
       .orderBy(asc(lessons.sessionNumber))
       .limit(1);
     return nextLesson;
+  }
+
+  // Audio
+  async updateLessonAudio(id: number, audioUrl: string, durationSeconds: number, fileSize: number): Promise<Lesson | undefined> {
+    const [updated] = await db
+      .update(lessons)
+      .set({
+        audioUrl,
+        audioDurationSeconds: durationSeconds,
+        audioFileSize: fileSize,
+        audioGeneratedAt: new Date(),
+      })
+      .where(eq(lessons.id, id))
+      .returning();
+    return updated;
+  }
+
+  async getLessonsNeedingAudio(): Promise<Lesson[]> {
+    return db
+      .select()
+      .from(lessons)
+      .where(sql`${lessons.audioUrl} IS NULL AND ${lessons.content} IS NOT NULL AND ${lessons.content} != ''`)
+      .orderBy(asc(lessons.createdAt));
+  }
+
+  async getLessonsWithAudio(courseId: number): Promise<Lesson[]> {
+    return db
+      .select()
+      .from(lessons)
+      .where(
+        and(
+          eq(lessons.courseId, courseId),
+          sql`${lessons.audioUrl} IS NOT NULL`
+        )
+      )
+      .orderBy(asc(lessons.sessionNumber));
   }
 
   // Progress

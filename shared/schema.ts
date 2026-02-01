@@ -14,6 +14,9 @@ export const courses = pgTable("courses", {
   totalLessons: integer("total_lessons").default(0),
   isCompleted: boolean("is_completed").default(false),
   isArchived: boolean("is_archived").default(false),
+  // TTS and RSS fields
+  voiceId: varchar("voice_id"),
+  rssFeedUrl: text("rss_feed_url"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
@@ -28,6 +31,11 @@ export const lessons = pgTable("lessons", {
   content: text("content").notNull(),
   userFeedback: text("user_feedback"),
   estimatedMinutes: integer("estimated_minutes").default(5),
+  // Audio fields for TTS
+  audioUrl: text("audio_url"),
+  audioDurationSeconds: integer("audio_duration_seconds"),
+  audioFileSize: integer("audio_file_size"),
+  audioGeneratedAt: timestamp("audio_generated_at"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 

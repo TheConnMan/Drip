@@ -3,6 +3,8 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth";
+import { startScheduler } from "./services/scheduler";
+import { ensureAudioStorageDirectory } from "./services/tts";
 
 const app = express();
 const httpServer = createServer(app);
@@ -87,6 +89,9 @@ app.use((req, res, next) => {
     await setupVite(httpServer, app);
   }
 
+  // Initialize audio storage directory
+  ensureAudioStorageDirectory();
+
   const port = parseInt(process.env.PORT || "5000", 10);
   httpServer.listen(
     {
@@ -96,6 +101,11 @@ app.use((req, res, next) => {
     },
     () => {
       log(`serving on port ${port}`);
+      log(`RSS feeds available at: /feed/{courseId}.xml`);
+      log(`Audio files available at: /audio/{courseId}/{lessonNumber}.mp3`);
+
+      // Start the daily lesson audio generation scheduler
+      startScheduler();
     },
   );
 })();

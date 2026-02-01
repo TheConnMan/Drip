@@ -1,8 +1,11 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import fs from "fs";
 import { storage } from "./storage";
 import { isAuthenticated } from "./replit_integrations/auth";
 import Anthropic from "@anthropic-ai/sdk";
+import { generateRssFeed, getRssFeedUrl } from "./services/rss";
+import { getAudioFilePath, generateSpeech, saveAudioFile, getPublicAudioUrl } from "./services/tts";
 
 const anthropic = new Anthropic({
   apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY,
@@ -752,6 +755,143 @@ Just provide the expanded content, no meta text.`,
     } catch (error) {
       console.error("Error expanding topic:", error);
       res.status(500).json({ error: "Failed to expand topic" });
+    }
+  });
+
+  // RSS feed for a course (public, no auth required)
+  app.get("/feed/:courseId.xml", async (req, res) => {
+    try {
+      const courseId = parseInt(req.params.courseId);
+      const course = await storage.getCourse(courseId);
+
+      if (!course) {
+        return res.status(404).type("text/plain").send("Course not found");
+      }
+
+      const lessons = await storage.getLessonsWithAudio(courseId);
+      const rssFeed = generateRssFeed(course, lessons);
+
+      res.type("application/rss+xml");
+      res.set("Cache-Control", "public, max-age=300"); // 5 minute cache
+      res.send(rssFeed);
+    } catch (error) {
+      console.error("Error generating RSS feed:", error);
+      res.status(500).type("text/plain").send("Failed to generate RSS feed");
+    }
+  });
+
+  // Serve audio file (public, no auth required)
+  app.get("/audio/:courseId/:lessonNumber.mp3", async (req, res) => {
+    try {
+      const courseId = parseInt(req.params.courseId);
+      const lessonNumber = parseInt(req.params.lessonNumber);
+
+      if (isNaN(courseId) || isNaN(lessonNumber)) {
+        return res.status(400).send("Invalid course or lesson number");
+      }
+
+      const filePath = getAudioFilePath(courseId, lessonNumber);
+      if (!filePath) {
+        return res.status(404).send("Audio file not found");
+      }
+
+      const stat = fs.statSync(filePath);
+      const fileSize = stat.size;
+      const range = req.headers.range;
+
+      if (range) {
+        // Handle range requests for seeking in podcast apps
+        const parts = range.replace(/bytes=/, "").split("-");
+        const start = parseInt(parts[0], 10);
+        const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+        const chunkSize = end - start + 1;
+
+        const stream = fs.createReadStream(filePath, { start, end });
+
+        res.writeHead(206, {
+          "Content-Range": `bytes ${start}-${end}/${fileSize}`,
+          "Accept-Ranges": "bytes",
+          "Content-Length": chunkSize,
+          "Content-Type": "audio/mpeg",
+        });
+
+        stream.pipe(res);
+      } else {
+        // Full file request
+        res.writeHead(200, {
+          "Content-Length": fileSize,
+          "Content-Type": "audio/mpeg",
+          "Accept-Ranges": "bytes",
+          "Cache-Control": "public, max-age=31536000", // 1 year cache
+        });
+
+        const stream = fs.createReadStream(filePath);
+        stream.pipe(res);
+      }
+    } catch (error) {
+      console.error("Error serving audio file:", error);
+      res.status(500).send("Failed to serve audio file");
+    }
+  });
+
+  // Generate audio for a lesson
+  app.post("/api/lessons/:id/generate-audio", isAuthenticated, async (req: any, res) => {
+    try {
+      const lessonId = parseInt(req.params.id);
+      const userId = req.user.claims.sub;
+
+      const lesson = await storage.getLesson(lessonId);
+      if (!lesson) {
+        return res.status(404).json({ error: "Lesson not found" });
+      }
+
+      const course = await storage.getCourse(lesson.courseId);
+      if (!course || course.userId !== userId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      if (lesson.audioUrl) {
+        return res.json({ message: "Audio already exists", audioUrl: lesson.audioUrl });
+      }
+
+      if (!lesson.content || lesson.content === "PENDING_GENERATION") {
+        return res.status(400).json({ error: "Lesson content not yet generated" });
+      }
+
+      // Generate audio
+      const ttsResult = await generateSpeech(lesson.content, course.voiceId);
+      const { fileSize } = await saveAudioFile(lesson.courseId, lesson.sessionNumber, ttsResult.audioBuffer);
+      const audioUrl = getPublicAudioUrl(lesson.courseId, lesson.sessionNumber);
+
+      const updated = await storage.updateLessonAudio(lessonId, audioUrl, ttsResult.durationSeconds, fileSize);
+
+      res.json({ message: "Audio generated", lesson: updated });
+    } catch (error) {
+      console.error("Error generating audio:", error);
+      res.status(500).json({ error: "Failed to generate audio" });
+    }
+  });
+
+  // Get RSS feed URL for a course
+  app.get("/api/courses/:id/feed-url", isAuthenticated, async (req: any, res) => {
+    try {
+      const courseId = parseInt(req.params.id);
+      const userId = req.user.claims.sub;
+
+      const course = await storage.getCourse(courseId);
+      if (!course) {
+        return res.status(404).json({ error: "Course not found" });
+      }
+
+      if (course.userId !== userId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      const feedUrl = course.rssFeedUrl || getRssFeedUrl(courseId);
+      res.json({ feedUrl });
+    } catch (error) {
+      console.error("Error getting feed URL:", error);
+      res.status(500).json({ error: "Failed to get feed URL" });
     }
   });
 

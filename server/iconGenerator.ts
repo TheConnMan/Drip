@@ -51,7 +51,7 @@ async function generateImage(prompt: string): Promise<Buffer> {
   }
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout for DALL-E 3
+  const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minute timeout for DALL-E 3
 
   try {
     const response = await fetch("https://api.openai.com/v1/images/generations", {

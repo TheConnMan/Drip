@@ -24,7 +24,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { BookOpen, Plus, Play, CheckCircle2, LogOut, MoreVertical, Archive, Trash2, ArchiveRestore, ChevronDown, ChevronUp } from "lucide-react";
+import { BookOpen, Plus, Play, CheckCircle2, LogOut, MoreVertical, Archive, Trash2, ArchiveRestore, ChevronDown, ChevronUp, Droplet } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Course } from "@shared/schema";
@@ -225,50 +225,80 @@ export default function Home() {
   );
 }
 
-function CourseCard({ 
-  course, 
+function CourseIcon({ iconUrl, size = 48 }: { iconUrl?: string | null; size?: number }) {
+  if (iconUrl) {
+    return (
+      <img
+        src={iconUrl}
+        alt="Course icon"
+        className="rounded-lg object-cover flex-shrink-0"
+        style={{ width: size, height: size }}
+        onError={(e) => {
+          // Fallback to default icon on error
+          e.currentTarget.style.display = 'none';
+          e.currentTarget.nextElementSibling?.classList.remove('hidden');
+        }}
+      />
+    );
+  }
+
+  return (
+    <div
+      className="rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0"
+      style={{ width: size, height: size }}
+    >
+      <Droplet className="text-primary" style={{ width: size * 0.5, height: size * 0.5 }} />
+    </div>
+  );
+}
+
+function CourseCard({
+  course,
   isCompleted,
   isArchived,
   onArchive,
   onUnarchive,
   onDelete,
-}: { 
-  course: CourseWithProgress; 
+}: {
+  course: CourseWithProgress;
   isCompleted?: boolean;
   isArchived?: boolean;
   onArchive?: () => void;
   onUnarchive?: () => void;
   onDelete?: () => void;
 }) {
-  const progressPercent = course.totalLessons 
-    ? Math.round((course.completedLessons / course.totalLessons) * 100) 
+  const progressPercent = course.totalLessons
+    ? Math.round((course.completedLessons / course.totalLessons) * 100)
     : 0;
 
   return (
-    <Card 
+    <Card
       className={`p-5 transition-colors overflow-hidden ${isArchived ? 'opacity-60' : ''}`}
       data-testid={`card-course-${course.id}`}
     >
       <div className="flex items-start justify-between gap-3 w-full">
-        <Link href={`/course/${course.id}`} className="flex-1 min-w-0 hover-elevate rounded-md -m-2 p-2 overflow-hidden">
-          <h3 className="font-semibold text-lg mb-1 break-words" data-testid={`text-course-title-${course.id}`}>
-            {course.title}
-          </h3>
-          <p className="text-sm text-muted-foreground line-clamp-2 mb-3 break-words">
-            {course.description}
-          </p>
-          <div className="flex items-center gap-3 text-sm text-muted-foreground">
-            <div className="flex items-center gap-1.5">
-              <BookOpen className="w-4 h-4" />
-              <span>Day {course.completedLessons + 1} of {course.totalLessons}</span>
+        <Link href={`/course/${course.id}`} className="flex items-start gap-4 flex-1 min-w-0 hover-elevate rounded-md -m-2 p-2 overflow-hidden">
+          <CourseIcon iconUrl={course.iconUrl} size={48} />
+          <div className="flex-1 min-w-0">
+            <h3 className="font-semibold text-lg mb-1 break-words" data-testid={`text-course-title-${course.id}`}>
+              {course.title}
+            </h3>
+            <p className="text-sm text-muted-foreground line-clamp-2 mb-3 break-words">
+              {course.description}
+            </p>
+            <div className="flex items-center gap-3 text-sm text-muted-foreground">
+              <div className="flex items-center gap-1.5">
+                <BookOpen className="w-4 h-4" />
+                <span>Day {course.completedLessons + 1} of {course.totalLessons}</span>
+              </div>
+              <span>{progressPercent}%</span>
             </div>
-            <span>{progressPercent}%</span>
+            <Progress
+              value={progressPercent}
+              className="mt-3 h-1.5"
+              data-testid={`progress-course-${course.id}`}
+            />
           </div>
-          <Progress 
-            value={progressPercent} 
-            className="mt-3 h-1.5" 
-            data-testid={`progress-course-${course.id}`}
-          />
         </Link>
         <div className="flex items-center gap-2 flex-shrink-0">
           {isCompleted ? (

@@ -6,8 +6,9 @@ import Anthropic from "@anthropic-ai/sdk";
 import { conductDeepResearch, Citation } from "./perplexity";
 import { v4 as uuidv4 } from "uuid";
 import { generateSpeech } from "./elevenlabs";
-import { uploadAudio, downloadAudio } from "./objectStorage";
+import { uploadAudio, downloadAudio, downloadImage } from "./objectStorage";
 import { generateRssFeed } from "./rss";
+import { generateCourseIconSafe } from "./iconGenerator";
 
 function calculateConfidenceScore(content: string, citations: Citation[]): number {
   const wordCount = content.split(/\s+/).length;
@@ -261,6 +262,22 @@ export async function registerRoutes(
     }
   });
 
+  // Image file proxy (for local development)
+  app.get("/image/:key", async (req, res) => {
+    try {
+      const key = decodeURIComponent(req.params.key);
+      const imageBuffer = await downloadImage(key);
+
+      res.set("Content-Type", "image/png");
+      res.set("Content-Length", imageBuffer.length.toString());
+      res.set("Cache-Control", "public, max-age=31536000");
+      res.send(imageBuffer);
+    } catch (error) {
+      console.error("Error serving image:", error);
+      res.status(404).send("Image not found");
+    }
+  });
+
   // AUTHENTICATED ROUTES
 
   // Get all courses for current user
@@ -496,11 +513,28 @@ Only respond with valid JSON, no other text.`;
         }
       }
 
-      // Kick off research and first lesson generation in background
-      // Research runs first (if API key available), then first lesson generates with research context
+      // Kick off research, icon generation, and first lesson generation in background
+      // Research and icon run in parallel, then first lesson generates with research context
       const courseId = course.id;
       if (firstLessonId) {
         const lessonId = firstLessonId;
+
+        // Fire and forget icon generation (runs in parallel with research)
+        (async () => {
+          const iconResult = await generateCourseIconSafe(
+            courseId,
+            outline.title,
+            outline.description || outline.title
+          );
+          if (iconResult) {
+            await storage.updateCourse(courseId, {
+              iconUrl: iconResult.iconUrl,
+              iconGeneratedAt: iconResult.iconGeneratedAt,
+            });
+            console.log(`Icon generated for course ${courseId}: ${iconResult.iconUrl}`);
+          }
+        })();
+
         (async () => {
           let researchCitations: Citation[] = [];
           let researchContent = "";

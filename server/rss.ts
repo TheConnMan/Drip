@@ -45,6 +45,24 @@ export function generateRssFeed(course: Course, lessons: Lesson[], baseUrl: stri
 
   const feedUrl = `${baseUrl}/api/courses/${course.id}/rss`;
   const courseDescription = course.description || `Learn about ${course.title}`;
+  const courseLink = `${baseUrl}/course/${course.id}`;
+
+  // Generate image tags if icon is available
+  let imageTag = "";
+  let itunesImageTag = "";
+  if (course.iconUrl) {
+    const iconUrl = course.iconUrl.startsWith("/")
+      ? `${baseUrl}${course.iconUrl}`
+      : course.iconUrl;
+    imageTag = `    <image>
+      <url>${escapeXml(iconUrl)}</url>
+      <title>${escapeXml(course.title)}</title>
+      <link>${escapeXml(courseLink)}</link>
+    </image>
+`;
+    itunesImageTag = `    <itunes:image href="${escapeXml(iconUrl)}" />
+`;
+  }
 
   const items = sortedLessons.map((lesson, index) => {
     const audioUrl = `${baseUrl}/audio/${lesson.id}`;
@@ -89,7 +107,7 @@ export function generateRssFeed(course: Course, lessons: Lesson[], baseUrl: stri
     <language>en-us</language>
     <lastBuildDate>${lastBuildDate}</lastBuildDate>
     <atom:link href="${escapeXml(feedUrl)}" rel="self" type="application/rss+xml" />
-    <itunes:author>Drip</itunes:author>
+${imageTag}${itunesImageTag}    <itunes:author>Drip</itunes:author>
     <itunes:summary>${escapeXml(courseDescription)}</itunes:summary>
     <itunes:explicit>false</itunes:explicit>
     <itunes:type>serial</itunes:type>

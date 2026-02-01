@@ -15,6 +15,8 @@ export const courses = pgTable("courses", {
   isCompleted: boolean("is_completed").default(false),
   isArchived: boolean("is_archived").default(false),
   rssFeedUuid: varchar("rss_feed_uuid", { length: 36 }).unique(),
+  iconUrl: text("icon_url"),
+  iconGeneratedAt: timestamp("icon_generated_at"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });

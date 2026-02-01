@@ -22,7 +22,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { ArrowLeft, BookOpen, CheckCircle2, Circle, Lock, MoreVertical, Archive, Trash2, Loader2, Sparkles, Rss } from "lucide-react";
+import { ArrowLeft, BookOpen, CheckCircle2, Circle, Lock, MoreVertical, Archive, Trash2, Loader2, Sparkles, Rss, Droplet } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Course, Lesson, LessonProgress } from "@shared/schema";
@@ -193,6 +193,24 @@ export default function CoursePage() {
       </header>
 
       <main className="container mx-auto px-4 py-6 max-w-2xl">
+        {/* Course Icon Header */}
+        <div className="flex flex-col items-center mb-6">
+          {course.iconUrl ? (
+            <img
+              src={course.iconUrl}
+              alt={`${course.title} icon`}
+              className="w-24 h-24 rounded-xl object-cover mb-3"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+              }}
+            />
+          ) : (
+            <div className="w-24 h-24 rounded-xl bg-primary/10 flex items-center justify-center mb-3">
+              <Droplet className="w-12 h-12 text-primary" />
+            </div>
+          )}
+        </div>
+
         <Card className="p-5 mb-6" data-testid="card-progress">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">

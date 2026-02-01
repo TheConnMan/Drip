@@ -1,40 +1,33 @@
-import { Client } from "@replit/object-storage";
+import { objectStorageClient } from "./replit_integrations/object_storage";
 import * as fs from "fs/promises";
 import * as path from "path";
 
 const LOCAL_STORAGE_DIR = ".local-audio";
-
-// Lazy-initialized client - only created when actually needed
-let client: Client | null = null;
-let clientInitFailed = false;
-let useLocalStorage = !process.env.REPL_ID;
+const useLocalStorage = !process.env.REPL_ID;
 
 async function ensureLocalDir(): Promise<void> {
   await fs.mkdir(LOCAL_STORAGE_DIR, { recursive: true });
 }
 
-async function getClient(): Promise<Client> {
-  if (clientInitFailed || useLocalStorage) {
-    throw new Error("Object storage not available");
+function getPublicPath(): { bucketName: string; prefix: string } {
+  const pathsStr = process.env.PUBLIC_OBJECT_SEARCH_PATHS || "";
+  const publicPath = pathsStr.split(",")[0]?.trim();
+  
+  if (!publicPath) {
+    throw new Error(
+      "PUBLIC_OBJECT_SEARCH_PATHS not set. Create a bucket in Object Storage tool."
+    );
   }
-
-  if (!client) {
-    try {
-      client = new Client();
-      await client.list({ prefix: "__test__", limit: 1 });
-    } catch (error) {
-      clientInitFailed = true;
-      client = null;
-      useLocalStorage = true;
-      throw new Error("Object storage not available, falling back to local");
-    }
-  }
-
-  return client;
+  
+  const parts = publicPath.startsWith("/") ? publicPath.slice(1).split("/") : publicPath.split("/");
+  const bucketName = parts[0];
+  const prefix = parts.slice(1).join("/");
+  
+  return { bucketName, prefix };
 }
 
 export function isObjectStorageAvailable(): boolean {
-  return true; // Always available now (local or Replit)
+  return true;
 }
 
 export async function uploadAudio(key: string, buffer: Buffer): Promise<string> {
@@ -45,25 +38,39 @@ export async function uploadAudio(key: string, buffer: Buffer): Promise<string> 
     return key;
   }
 
-  const storageClient = await getClient();
-  const result = await storageClient.uploadFromBytes(key, buffer);
-  if (!result.ok) {
-    throw new Error(`Failed to upload audio: ${result.error.message}`);
-  }
+  const { bucketName, prefix } = getPublicPath();
+  const bucket = objectStorageClient.bucket(bucketName);
+  const objectPath = prefix ? `${prefix}/${key}` : key;
+  const file = bucket.file(objectPath);
+  
+  await file.save(buffer, {
+    contentType: "audio/mpeg",
+    metadata: {
+      cacheControl: "public, max-age=31536000",
+    },
+  });
+  
+  console.log(`[object-storage] Uploaded audio to ${bucketName}/${objectPath}`);
   return key;
 }
 
 export async function deleteAudio(key: string): Promise<void> {
   if (useLocalStorage) {
     const filePath = path.join(LOCAL_STORAGE_DIR, key.replace(/\//g, "_"));
-    await fs.unlink(filePath).catch(() => {}); // Ignore if not found
+    await fs.unlink(filePath).catch(() => {});
     return;
   }
 
-  const storageClient = await getClient();
-  const result = await storageClient.delete(key, { ignoreNotFound: true });
-  if (!result.ok) {
-    throw new Error(`Failed to delete audio: ${result.error.message}`);
+  const { bucketName, prefix } = getPublicPath();
+  const bucket = objectStorageClient.bucket(bucketName);
+  const objectPath = prefix ? `${prefix}/${key}` : key;
+  const file = bucket.file(objectPath);
+  
+  try {
+    await file.delete({ ignoreNotFound: true });
+    console.log(`[object-storage] Deleted audio ${objectPath}`);
+  } catch (error) {
+    console.error(`Failed to delete audio ${key}:`, error);
   }
 }
 
@@ -73,10 +80,16 @@ export async function downloadAudio(key: string): Promise<Buffer> {
     return fs.readFile(filePath);
   }
 
-  const storageClient = await getClient();
-  const result = await storageClient.downloadAsBytes(key);
-  if (!result.ok) {
-    throw new Error(`Failed to download audio: ${result.error.message}`);
+  const { bucketName, prefix } = getPublicPath();
+  const bucket = objectStorageClient.bucket(bucketName);
+  const objectPath = prefix ? `${prefix}/${key}` : key;
+  const file = bucket.file(objectPath);
+  
+  const [exists] = await file.exists();
+  if (!exists) {
+    throw new Error(`Audio file not found: ${key}`);
   }
-  return result.value[0];
+  
+  const [contents] = await file.download();
+  return contents;
 }

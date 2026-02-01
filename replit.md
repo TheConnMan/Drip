@@ -106,6 +106,14 @@ The feedback system allows users to influence future lesson generation:
   - Requires `SESSION_SECRET` for session encryption
   - Uses `REPL_ID` for client identification
 
+### Object Storage (Audio)
+- **Replit Object Storage**: Used for storing lesson audio files (GCS-backed)
+  - Configured via `DEFAULT_OBJECT_STORAGE_BUCKET_ID`, `PUBLIC_OBJECT_SEARCH_PATHS`, `PRIVATE_OBJECT_DIR`
+  - Audio files stored with key pattern: `audio/lesson-{id}.mp3`
+  - Integration module at `server/replit_integrations/object_storage/`
+  - Audio wrapper at `server/objectStorage.ts` providing `uploadAudio()`, `downloadAudio()`, `deleteAudio()`
+  - Local fallback to `.local-audio/` directory when running outside Replit
+
 ### Key npm Packages
 - `express` - Web server framework
 - `drizzle-orm` + `pg` - Database access
@@ -113,6 +121,7 @@ The feedback system allows users to influence future lesson generation:
 - `@tanstack/react-query` - Client-side data fetching
 - `react-markdown` - Lesson content rendering
 - `p-limit` + `p-retry` - Batch processing utilities
+- `@google-cloud/storage` - GCS client for object storage
 
 ### PWA Support
 The app is installable as a Progressive Web App:

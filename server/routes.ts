@@ -256,59 +256,69 @@ Only respond with valid JSON, no other text.`;
         }
       }
 
-      // Kick off research generation in background (fire-and-forget) if API key is available
+      // Kick off research and first lesson generation in background
+      // Research runs first (if API key available), then first lesson generates with research context
       const courseId = course.id;
-      if (process.env.PERPLEXITY_API_KEY) {
-        (async () => {
-          try {
-            // Create research record with pending status
-            const research = await storage.createCourseResearch({
-            courseId,
-            status: "pending",
-            researchContent: "",
-            citations: "[]",
-          });
-
-          // Update to generating status
-          await storage.updateCourseResearch(research.id, { status: "generating" });
-          console.log(`Starting deep research for course ${courseId}`);
-
-          const researchResult = await conductDeepResearch(outline.description || outline.title);
-
-          // Calculate confidence score
-          const confidenceScore = calculateConfidenceScore(researchResult.content, researchResult.citations);
-
-          // Update with completed research
-          await storage.updateCourseResearch(research.id, {
-            status: "completed",
-            researchContent: researchResult.content,
-            citations: JSON.stringify(researchResult.citations),
-            confidenceScore,
-            completedAt: new Date(),
-          });
-          console.log(`Deep research completed for course ${courseId} with ${researchResult.citations.length} citations`);
-        } catch (error) {
-          console.error(`Error generating research for course ${courseId}:`, error);
-          // Try to update status to failed if research record exists
-          try {
-            const existingResearch = await storage.getCourseResearch(courseId);
-            if (existingResearch) {
-              await storage.updateCourseResearch(existingResearch.id, {
-                status: "failed",
-                errorMessage: error instanceof Error ? error.message : String(error),
-              });
-            }
-          } catch (updateError) {
-            console.error(`Failed to update research status:`, updateError);
-          }
-        }
-        })();
-      }
-
-      // Kick off first lesson generation in background
       if (firstLessonId) {
         const lessonId = firstLessonId;
         (async () => {
+          let researchCitations: Citation[] = [];
+          let researchContent = "";
+          let researchCompleted = false;
+
+          // Step 1: Run research if API key is available
+          if (process.env.PERPLEXITY_API_KEY) {
+            try {
+              // Create research record with pending status
+              const research = await storage.createCourseResearch({
+                courseId,
+                status: "pending",
+                researchContent: "",
+                citations: "[]",
+              });
+
+              // Update to generating status
+              await storage.updateCourseResearch(research.id, { status: "generating" });
+              console.log(`Starting deep research for course ${courseId}`);
+
+              const researchResult = await conductDeepResearch(outline.description || outline.title);
+
+              // Calculate confidence score
+              const confidenceScore = calculateConfidenceScore(researchResult.content, researchResult.citations);
+
+              // Update with completed research
+              await storage.updateCourseResearch(research.id, {
+                status: "completed",
+                researchContent: researchResult.content,
+                citations: JSON.stringify(researchResult.citations),
+                confidenceScore,
+                completedAt: new Date(),
+              });
+              console.log(`Deep research completed for course ${courseId} with ${researchResult.citations.length} citations`);
+
+              // Store for use in lesson generation
+              researchCitations = researchResult.citations;
+              researchContent = researchResult.content;
+              researchCompleted = true;
+            } catch (error) {
+              console.error(`Error generating research for course ${courseId}:`, error);
+              // Try to update status to failed if research record exists
+              try {
+                const existingResearch = await storage.getCourseResearch(courseId);
+                if (existingResearch) {
+                  await storage.updateCourseResearch(existingResearch.id, {
+                    status: "failed",
+                    errorMessage: error instanceof Error ? error.message : String(error),
+                  });
+                }
+              } catch (updateError) {
+                console.error(`Failed to update research status:`, updateError);
+              }
+              // Continue to lesson generation even if research failed
+            }
+          }
+
+          // Step 2: Generate first lesson (with research context if available)
           try {
             const lesson = await storage.getLesson(lessonId);
             if (!lesson) return;
@@ -321,23 +331,21 @@ Only respond with valid JSON, no other text.`;
 
             console.log(`Pre-generating first lesson for course ${course.id}`);
 
-            // Check if research is available (don't block, just use if ready)
+            // Build research context if research completed successfully
             let researchContext = "";
-            const research = await storage.getCourseResearch(course.id);
-            if (research && research.status === "completed") {
-              const citations: Citation[] = JSON.parse(research.citations || "[]");
+            if (researchCompleted && researchContent) {
               researchContext = `
 
 ## Research Context
-${research.researchContent}
+${researchContent}
 
 ## Available Sources
-${citations.map((c, i) => `[${i + 1}] ${c.url}`).join("\n")}
+${researchCitations.map((c, i) => `[${i + 1}] ${c.url}`).join("\n")}
 
 When relevant, cite sources using [N] inline notation.`;
-              console.log(`Using research with ${citations.length} citations for lesson ${lessonId}`);
+              console.log(`Using research with ${researchCitations.length} citations for lesson ${lessonId}`);
             } else {
-              console.log(`Research not yet available for lesson ${lessonId}, proceeding without`);
+              console.log(`Research not available for lesson ${lessonId}, proceeding without`);
             }
 
             const contentResponse = await anthropic.messages.create({
@@ -376,8 +384,7 @@ Just write the lesson content and further reading, no meta text or preamble.`,
 
             // Extract used citations and build citation map
             let citationMap: Record<number, string> | null = null;
-            if (research && research.status === "completed") {
-              const citations: Citation[] = JSON.parse(research.citations || "[]");
+            if (researchCompleted && researchCitations.length > 0) {
               const usedCitations = new Set<number>();
               const matches = Array.from(content.matchAll(/\[(\d+)\]/g));
               for (const match of matches) {
@@ -387,7 +394,7 @@ Just write the lesson content and further reading, no meta text or preamble.`,
                 citationMap = {};
                 const citationNums = Array.from(usedCitations);
                 for (const citNum of citationNums) {
-                  const citation = citations[citNum - 1]; // citations are 1-indexed in content
+                  const citation = researchCitations[citNum - 1]; // citations are 1-indexed in content
                   if (citation) {
                     citationMap[citNum] = citation.url;
                   }

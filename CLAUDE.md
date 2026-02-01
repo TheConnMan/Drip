@@ -39,14 +39,17 @@ Full-stack TypeScript monorepo with three layers:
 ### Database
 PostgreSQL with Drizzle ORM. Schema in `shared/schema.ts`, config in `drizzle.config.ts`.
 
-Core tables: `courses`, `lessons`, `lesson_progress`, `lesson_feedback`, `topic_expansions`, `users`, `sessions`
+Core tables: `courses`, `lessons`, `lesson_progress`, `lesson_feedback`, `topic_expansions`, `course_research`, `users`, `sessions`
 
 ### Authentication
 - **On Replit**: OpenID Connect via Replit Auth (requires `REPL_ID` env var)
 - **Local dev**: When `REPL_ID` is not set, auth is bypassed with auto-login as test user
 
 ### Environment Variables
-Only `AI_INTEGRATIONS_ANTHROPIC_API_KEY` is required for local dev. Database URL and session secret have sensible defaults.
+- `AI_INTEGRATIONS_ANTHROPIC_API_KEY` - Required for lesson generation (Claude API)
+- `PERPLEXITY_API_KEY` - Optional, enables deep research grounding for courses
+
+Database URL and session secret have sensible defaults for local dev.
 
 ### Lesson Generation Pattern
 Lessons are generated on-demand when accessed, not upfront:
@@ -56,3 +59,15 @@ Lessons are generated on-demand when accessed, not upfront:
 4. Race condition protection prevents duplicate API calls
 
 User feedback from previous lessons is included in prompts for subsequent lesson generation.
+
+### Perplexity Deep Research
+When `PERPLEXITY_API_KEY` is configured, course creation triggers async deep research:
+1. Course build creates a `course_research` record with "pending" status
+2. Background job calls Perplexity `sonar-deep-research` model (5 min timeout)
+3. Research content and citations are stored when complete
+4. Lesson generation includes research context with citation notation [1], [2], etc.
+5. Frontend can poll `/api/courses/:id/research` to check research status
+
+Key files:
+- `server/perplexity.ts` - Perplexity API client and research formatting
+- `shared/schema.ts` - `courseResearch` table with JSONB citations

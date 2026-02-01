@@ -3,7 +3,7 @@ import { pgTable, text, varchar, serial, integer, timestamp, boolean, jsonb } fr
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-// Citation type for research documents
+// Citation type for Perplexity research documents
 export interface Citation {
   index: number;
   title: string;
@@ -74,13 +74,13 @@ export const topicExpansions = pgTable("topic_expansions", {
 export const courseResearch = pgTable("course_research", {
   id: serial("id").primaryKey(),
   courseId: integer("course_id").notNull().references(() => courses.id, { onDelete: "cascade" }),
-  query: text("query").notNull(), // The query sent to Perplexity
-  content: text("content").notNull(), // Full research response text
-  citations: jsonb("citations").$type<Citation[]>().default([]), // Array of citation objects
-  searchCount: integer("search_count"), // Number of searches Perplexity performed
-  tokenCount: integer("token_count"), // Response token count
-  status: varchar("status", { length: 20 }).default("pending").notNull(), // pending, in_progress, completed, failed
-  error: text("error"), // Error message if failed
+  query: text("query").notNull(),
+  content: text("content").notNull(),
+  citations: jsonb("citations").$type<Citation[]>().default([]),
+  searchCount: integer("search_count"),
+  tokenCount: integer("token_count"),
+  status: varchar("status", { length: 20 }).default("pending").notNull(),
+  error: text("error"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 

@@ -17,7 +17,6 @@ const researchJobs = new Map<number, Promise<void>>();
  * Starts async research for a course
  */
 async function startAsyncResearch(courseId: number, outline: any): Promise<void> {
-  // Check if already running
   if (researchJobs.has(courseId)) {
     return researchJobs.get(courseId);
   }
@@ -25,11 +24,8 @@ async function startAsyncResearch(courseId: number, outline: any): Promise<void>
   const job = (async () => {
     try {
       console.log(`Starting deep research for course ${courseId}`);
-
-      // Update status to in_progress
       await storage.updateResearchStatus(courseId, "in_progress");
 
-      // Perform deep research
       const result = await performDeepResearch({
         topic: outline.title,
         courseTitle: outline.title,
@@ -37,7 +33,6 @@ async function startAsyncResearch(courseId: number, outline: any): Promise<void>
         sessionTitles: outline.sessions.map((s: any) => s.title),
       });
 
-      // Save research content
       await storage.updateResearchContent(
         courseId,
         result.content,
@@ -49,11 +44,9 @@ async function startAsyncResearch(courseId: number, outline: any): Promise<void>
       console.log(`Research completed for course ${courseId}: ${result.citations.length} citations`);
     } catch (error) {
       console.error(`Research failed for course ${courseId}:`, error);
-
       const errorMessage = error instanceof PerplexityError
         ? error.message
         : "Research failed unexpectedly";
-
       await storage.updateResearchStatus(courseId, "failed", errorMessage);
     } finally {
       researchJobs.delete(courseId);
@@ -99,8 +92,6 @@ export async function registerRoutes(
       const lessons = await storage.getLessonsByCourse(courseId);
       const progress = await storage.getProgressByCourse(userId, courseId);
       const completedLessons = await storage.getCompletedLessonsCount(userId, courseId);
-
-      // Get research status
       const research = await storage.getResearchByCourse(courseId);
 
       res.json({
@@ -140,7 +131,6 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Research not found" });
       }
 
-      // Calculate confidence based on citation count
       const citationCount = research.citations?.length || 0;
       let confidence: "high" | "medium" | "low" | "none" = "none";
       if (citationCount >= 15) confidence = "high";
@@ -152,7 +142,6 @@ export async function registerRoutes(
         citationCount,
         confidence,
         error: research.error,
-        // Only include full content if completed
         content: research.status === "completed" ? research.content : undefined,
         citations: research.status === "completed" ? research.citations : undefined,
       });
@@ -375,6 +364,13 @@ Only respond with valid JSON, no other text.`;
             
             console.log(`Pre-generating first lesson for course ${course.id}`);
             
+            // Check if research is available (might be ready by now)
+            const research = await storage.getResearchByCourse(course.id);
+            let researchContext = "";
+            if (research && research.status === "completed" && research.content) {
+              researchContext = formatResearchForPrompt(research.content, research.citations || []);
+            }
+
             const contentResponse = await anthropic.messages.create({
               model: "claude-sonnet-4-5",
               max_tokens: 2048,
@@ -384,7 +380,7 @@ Only respond with valid JSON, no other text.`;
                   content: `Write a 5-minute educational lesson for: "${lesson.title}"
 This is part of a course on: "${course.title}"
 Session 1 of ${course.totalLessons}.
-
+${researchContext}
 Write professional, well-researched educational content that:
 - Is written at a high school reading level (clear and accessible)
 - Uses clean markdown formatting with clear paragraphs
@@ -392,15 +388,16 @@ Write professional, well-researched educational content that:
 - Is informative and professional in tone
 - Is approximately 500-700 words
 - Presents accurate, factual information
-
+${research && research.status === "completed" ? `- Use citation notation [1], [2], etc. when referencing information from the research context
+- Ground your content in the research provided above` : `
 At the end of the lesson, include a "Further Reading" section with 2-3 credible references. Format like:
 **Further Reading**
 - [Title of resource] by Author/Organization - Brief description of what this covers
 - [Title of resource] by Author/Organization - Brief description
 
-Use real, well-known sources (books, academic institutions, reputable organizations, established publications). Do not invent fake sources.
+Use real, well-known sources (books, academic institutions, reputable organizations, established publications). Do not invent fake sources.`}
 
-Just write the lesson content and further reading, no meta text or preamble.`,
+Just write the lesson content${research && research.status === "completed" ? " with citations" : " and further reading"}, no meta text or preamble.`,
                 },
               ],
             });
@@ -676,23 +673,20 @@ Just write the lesson content, no meta text or introductions.`,
               console.log(`Lesson ${lessonId} already generated, skipping`);
               return;
             }
-
-            // Fetch research context if available
-            const research = await storage.getResearchByCourse(lesson.courseId);
-            let researchContext = "";
-            if (research && research.status === "completed" && research.content) {
-              researchContext = `\n\n${formatResearchForPrompt(research.content, research.citations || [])}
-
-IMPORTANT: Draw facts, statistics, and examples from the research context above. Cite sources using [1], [2], etc. matching the available citations. Aim for 2-4 citations per lesson where relevant.
-`;
-            }
-
+            
             const allFeedback = await storage.getFeedbackByCourse(lesson.courseId);
             const recentFeedback = allFeedback.slice(-3).map(f => f.feedback).join("\n- ");
 
             let feedbackContext = "";
             if (recentFeedback) {
               feedbackContext = `\n\nThe learner has provided this feedback on previous lessons that you should incorporate:\n- ${recentFeedback}`;
+            }
+
+            // Fetch research context if available
+            const research = await storage.getResearchByCourse(lesson.courseId);
+            let researchContext = "";
+            if (research && research.status === "completed" && research.content) {
+              researchContext = formatResearchForPrompt(research.content, research.citations || []);
             }
 
             const contentResponse = await anthropic.messages.create({
@@ -703,8 +697,8 @@ IMPORTANT: Draw facts, statistics, and examples from the research context above.
                   role: "user",
                   content: `Write a 5-minute educational lesson for: "${lesson.title}"
 This is part of a course on: "${course?.title}"
-Session ${lesson.sessionNumber} of ${course?.totalLessons}.${feedbackContext}${researchContext}
-
+Session ${lesson.sessionNumber} of ${course?.totalLessons}.${feedbackContext}
+${researchContext}
 Write professional, well-researched educational content that:
 - Is written at a high school reading level (clear and accessible)
 - Uses clean markdown formatting with clear paragraphs
@@ -712,26 +706,26 @@ Write professional, well-researched educational content that:
 - Is informative and professional in tone
 - Is approximately 500-700 words
 - Presents accurate, factual information
-${research?.status === "completed" ? "- Uses citations from the research context where relevant (e.g., [1], [2])" : ""}
-
+${research && research.status === "completed" ? `- Use citation notation [1], [2], etc. when referencing information from the research context
+- Ground your content in the research provided above` : `
 At the end of the lesson, include a "Further Reading" section with 2-3 credible references. Format like:
 **Further Reading**
 - [Title of resource] by Author/Organization - Brief description of what this covers
 - [Title of resource] by Author/Organization - Brief description
 
-${research?.status === "completed" ? "You may use sources from the research citations above or other real, well-known sources." : "Use real, well-known sources (books, academic institutions, reputable organizations, established publications). Do not invent fake sources."}
+Use real, well-known sources (books, academic institutions, reputable organizations, established publications). Do not invent fake sources.`}
 
-Just write the lesson content and further reading, no meta text or preamble.`,
+Just write the lesson content${research && research.status === "completed" ? " with citations" : " and further reading"}, no meta text or preamble.`,
                 },
               ],
             });
 
-            const content = contentResponse.content[0].type === "text"
-              ? contentResponse.content[0].text
+            const content = contentResponse.content[0].type === "text" 
+              ? contentResponse.content[0].text 
               : "";
 
             await storage.updateLesson(lessonId, { content });
-            console.log(`Generated content for lesson ${lessonId}${research?.status === "completed" ? " (with research context)" : ""}`);
+            console.log(`Generated content for lesson ${lessonId}`);
           } catch (error) {
             console.error(`Error generating lesson ${lessonId}:`, error);
           }

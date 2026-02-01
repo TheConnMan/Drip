@@ -137,3 +137,22 @@ When a course is built, the first lesson is automatically generated in the backg
 - Course build API returns immediately after creating lessons
 - First lesson generation starts in background (fire and forget)
 - Race condition protection prevents duplicate Claude API calls
+
+### Database Schema Sync
+The app includes automatic schema synchronization on startup (`server/db.ts: ensureSchemaSync()`). When the server starts, it checks for required columns and adds them if missing. This ensures production databases stay in sync after deployments.
+
+**Automatic migration for required columns:**
+- `courses.icon_url` - text, auto-added if missing
+- `courses.icon_generated_at` - timestamp, auto-added if missing
+
+**Manual steps (if auto-migration fails due to permissions):**
+```sql
+ALTER TABLE courses ADD COLUMN icon_url text;
+ALTER TABLE courses ADD COLUMN icon_generated_at timestamp;
+```
+
+**Adding new columns to the schema:**
+1. Update the schema in `shared/schema.ts`
+2. Add column check to `ensureSchemaSync()` in `server/db.ts` for production compatibility
+3. Run `npm run db:push` to sync the development database
+4. Deploy to apply changes to production

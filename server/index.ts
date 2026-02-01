@@ -4,6 +4,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth";
+import { ensureSchemaSync } from "./db";
 
 const app = express();
 const httpServer = createServer(app);
@@ -62,6 +63,9 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Ensure database schema is up to date
+  await ensureSchemaSync();
+  
   // Setup auth BEFORE other routes
   await setupAuth(app);
   registerAuthRoutes(app);

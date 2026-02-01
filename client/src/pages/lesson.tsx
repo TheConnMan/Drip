@@ -260,7 +260,7 @@ export default function LessonPage() {
         <div className="mb-6">
           <div className="flex items-center gap-3 text-sm mb-2">
             <span className="text-primary font-medium" data-testid="text-session-info">
-              SESSION {lesson.sessionNumber} OF {lesson.course.totalLessons}
+              LESSON {lesson.sessionNumber} OF {lesson.course.totalLessons}
             </span>
             <span className="text-muted-foreground flex items-center gap-1">
               <Clock className="w-4 h-4" />
@@ -324,8 +324,8 @@ export default function LessonPage() {
             className="w-full justify-start gap-2"
             onClick={() => {
               const selection = window.getSelection()?.toString().trim();
-              const topicToExpand = selection && selection.length > 2 && selection.length < 200 
-                ? selection 
+              const topicToExpand = selection && selection.length > 2 && selection.length < 200
+                ? selection
                 : lesson.title;
               expandMutation.mutate(topicToExpand);
             }}
@@ -351,9 +351,9 @@ export default function LessonPage() {
               Your Feedback
             </h3>
             {lesson.userFeedback && !isEditingFeedback && (
-              <Button 
-                variant="ghost" 
-                size="icon" 
+              <Button
+                variant="ghost"
+                size="icon"
                 onClick={() => {
                   setFeedbackText(lesson.userFeedback || "");
                   setIsEditingFeedback(true);
@@ -364,7 +364,7 @@ export default function LessonPage() {
               </Button>
             )}
           </div>
-          
+
           {isEditingFeedback ? (
             <>
               <p className="text-sm text-muted-foreground mb-3">

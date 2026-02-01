@@ -123,8 +123,8 @@ export default function CoursePage() {
     );
   }
 
-  const progressPercent = course.totalLessons 
-    ? Math.round((course.completedLessons / course.totalLessons) * 100) 
+  const progressPercent = course.totalLessons
+    ? Math.round((course.completedLessons / course.totalLessons) * 100)
     : 0;
 
   const completedLessonIds = new Set(
@@ -170,7 +170,7 @@ export default function CoursePage() {
                 Archive Course
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem 
+              <DropdownMenuItem
                 onClick={() => setShowDeleteDialog(true)}
                 className="text-destructive focus:text-destructive"
                 data-testid="button-delete"
@@ -292,7 +292,7 @@ function LessonItem({
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-xs font-medium text-primary mb-1" data-testid={`text-session-${lesson.sessionNumber}`}>
-            SESSION {lesson.sessionNumber}
+            LESSON {lesson.sessionNumber}
           </p>
           <h3 className="font-medium mb-1" data-testid={`text-lesson-title-${lesson.id}`}>
             {lesson.title}

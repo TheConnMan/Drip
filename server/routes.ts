@@ -51,6 +51,130 @@ function stripMarkdown(text: string): string {
 }
 
 /**
+ * Generates lesson content in the background (fire and forget)
+ * Used to pre-generate the next lesson when current lesson is completed
+ */
+async function generateNextLesson(lessonId: number, courseId: number): Promise<void> {
+  try {
+    const lesson = await storage.getLesson(lessonId);
+    if (!lesson) return;
+
+    // Skip if already generated
+    if (lesson.content !== "PENDING_GENERATION" && lesson.content !== "Content will be generated when you reach this lesson.") {
+      console.log(`Lesson ${lessonId} already has content, skipping`);
+      return;
+    }
+
+    console.log(`Generating content for lesson ${lessonId}`);
+
+    const course = await storage.getCourse(courseId);
+    if (!course) return;
+
+    // Build feedback context from previous lesson
+    let feedbackContext = "";
+    if (lesson.sessionNumber > 1) {
+      const courseLessons = await storage.getLessonsByCourse(courseId);
+      const previousLesson = courseLessons.find(l => l.sessionNumber === lesson.sessionNumber - 1);
+
+      if (previousLesson) {
+        const allFeedback = await storage.getFeedbackByCourse(courseId);
+        const previousLessonFeedback = allFeedback.filter(f => f.lessonId === previousLesson.id);
+
+        if (previousLessonFeedback.length > 0) {
+          const feedbackList = previousLessonFeedback.map(f => `- "${f.feedback}"`).join("\n");
+          feedbackContext = `\n\nThe learner left the following questions and comments on the previous lesson (Lesson ${previousLesson.sessionNumber}: "${previousLesson.title}"). Please address these in this lesson where relevant:\n\n${feedbackList}`;
+        }
+      }
+    }
+
+    // Check if research is available
+    let researchContext = "";
+    let researchCitations: Citation[] = [];
+    const research = await storage.getCourseResearch(courseId);
+    if (research && research.status === "completed") {
+      researchCitations = JSON.parse(research.citations || "[]");
+      researchContext = `
+
+## Research Context
+${research.researchContent}
+
+## Available Sources
+${researchCitations.map((c, i) => `[${i + 1}] ${c.url}`).join("\n")}
+
+When relevant, cite sources using [N] inline notation.`;
+      console.log(`Using research with ${researchCitations.length} citations for lesson ${lessonId}`);
+    } else {
+      console.log(`Research not yet available for lesson ${lessonId}, proceeding without`);
+    }
+
+    const contentResponse = await anthropic.messages.create({
+      model: "claude-sonnet-4-5",
+      max_tokens: 2048,
+      messages: [
+        {
+          role: "user",
+          content: `Write a 5-minute educational lesson for: "${lesson.title}"
+This is part of a course on: "${course.title}"
+Session ${lesson.sessionNumber} of ${course.totalLessons}.${feedbackContext}${researchContext}
+
+Write professional, well-researched educational content that:
+- Is written at a high school reading level (clear and accessible)
+- Uses clean markdown formatting with clear paragraphs
+- Includes real-world examples and practical applications
+- Is informative and professional in tone
+- Is approximately 500-700 words
+- Presents accurate, factual information
+
+At the end of the lesson, include a "Further Reading" section with 2-3 credible references. Format like:
+**Further Reading**
+- [Title of resource] by Author/Organization - Brief description of what this covers
+- [Title of resource] by Author/Organization - Brief description
+
+Use real, well-known sources (books, academic institutions, reputable organizations, established publications). Do not invent fake sources.
+
+Just write the lesson content and further reading, no meta text or preamble.`,
+        },
+      ],
+    });
+
+    let content = contentResponse.content[0].type === "text"
+      ? contentResponse.content[0].text
+      : "";
+
+    // Extract used citations and build citation map
+    let citationMap: Record<number, string> | null = null;
+    if (research && research.status === "completed" && researchCitations.length > 0) {
+      const usedCitations = new Set<number>();
+      const matches = Array.from(content.matchAll(/\[(\d+)\]/g));
+      for (const match of matches) {
+        usedCitations.add(parseInt(match[1]));
+      }
+      if (usedCitations.size > 0) {
+        citationMap = {};
+        const citationNums = Array.from(usedCitations);
+        for (const citNum of citationNums) {
+          const citation = researchCitations[citNum - 1]; // citations are 1-indexed in content
+          if (citation) {
+            citationMap[citNum] = citation.url;
+          }
+        }
+      }
+    }
+
+    await storage.updateLesson(lessonId, {
+      content,
+      citationMap: citationMap ? JSON.stringify(citationMap) : null,
+    });
+    console.log(`Generated content for lesson ${lessonId}`);
+
+    // Fire and forget audio generation
+    generateLessonAudio(lessonId);
+  } catch (error) {
+    console.error(`Failed to generate lesson ${lessonId}:`, error);
+  }
+}
+
+/**
  * Generates audio for a lesson in the background (fire and forget)
  */
 async function generateLessonAudio(lessonId: number): Promise<void> {
@@ -769,7 +893,8 @@ Just write the lesson content, no meta text or introductions.`,
 
       if (needsGeneration) {
         // Return immediately with generating status so UI can show loading state
-        res.json({
+        // Generation is triggered by POST /api/lessons/:id/complete, not here
+        return res.json({
           ...lesson,
           content: "PENDING_GENERATION",
           isGenerating: true,
@@ -777,123 +902,6 @@ Just write the lesson content, no meta text or introductions.`,
           isCompleted: progress?.isCompleted || false,
           nextLessonId: nextLesson?.id,
         });
-
-        // Generate content in background (fire and forget)
-        (async () => {
-          try {
-            // Re-check if content was generated by background process
-            const currentLesson = await storage.getLesson(lessonId);
-            if (currentLesson && currentLesson.content !== "PENDING_GENERATION" && currentLesson.content !== "Content will be generated when you reach this lesson.") {
-              console.log(`Lesson ${lessonId} already generated, skipping`);
-              return;
-            }
-
-            let feedbackContext = "";
-            if (lesson.sessionNumber > 1) {
-              // Get the previous lesson
-              const courseLessons = await storage.getLessonsByCourse(lesson.courseId);
-              const previousLesson = courseLessons.find(l => l.sessionNumber === lesson.sessionNumber - 1);
-
-              if (previousLesson) {
-                // Get feedback for that specific lesson
-                const allFeedback = await storage.getFeedbackByCourse(lesson.courseId);
-                const previousLessonFeedback = allFeedback.filter(f => f.lessonId === previousLesson.id);
-
-                if (previousLessonFeedback.length > 0) {
-                  const feedbackList = previousLessonFeedback.map(f => `- "${f.feedback}"`).join("\n");
-                  feedbackContext = `\n\nThe learner left the following questions and comments on the previous lesson (Lesson ${previousLesson.sessionNumber}: "${previousLesson.title}"). Please address these in this lesson where relevant:\n\n${feedbackList}`;
-                }
-              }
-            }
-
-            // Check if research is available (don't block, just use if ready)
-            let researchContext = "";
-            let researchCitations: Citation[] = [];
-            const research = await storage.getCourseResearch(lesson.courseId);
-            if (research && research.status === "completed") {
-              researchCitations = JSON.parse(research.citations || "[]");
-              researchContext = `
-
-## Research Context
-${research.researchContent}
-
-## Available Sources
-${researchCitations.map((c, i) => `[${i + 1}] ${c.url}`).join("\n")}
-
-When relevant, cite sources using [N] inline notation.`;
-              console.log(`Using research with ${researchCitations.length} citations for lesson ${lessonId}`);
-            } else {
-              console.log(`Research not yet available for lesson ${lessonId}, proceeding without`);
-            }
-
-            const contentResponse = await anthropic.messages.create({
-              model: "claude-sonnet-4-5",
-              max_tokens: 2048,
-              messages: [
-                {
-                  role: "user",
-                  content: `Write a 5-minute educational lesson for: "${lesson.title}"
-This is part of a course on: "${course?.title}"
-Session ${lesson.sessionNumber} of ${course?.totalLessons}.${feedbackContext}${researchContext}
-
-Write professional, well-researched educational content that:
-- Is written at a high school reading level (clear and accessible)
-- Uses clean markdown formatting with clear paragraphs
-- Includes real-world examples and practical applications
-- Is informative and professional in tone
-- Is approximately 500-700 words
-- Presents accurate, factual information
-
-At the end of the lesson, include a "Further Reading" section with 2-3 credible references. Format like:
-**Further Reading**
-- [Title of resource] by Author/Organization - Brief description of what this covers
-- [Title of resource] by Author/Organization - Brief description
-
-Use real, well-known sources (books, academic institutions, reputable organizations, established publications). Do not invent fake sources.
-
-Just write the lesson content and further reading, no meta text or preamble.`,
-                },
-              ],
-            });
-
-            let content = contentResponse.content[0].type === "text"
-              ? contentResponse.content[0].text
-              : "";
-
-            // Extract used citations and build citation map
-            let citationMap: Record<number, string> | null = null;
-            if (research && research.status === "completed" && researchCitations.length > 0) {
-              const usedCitations = new Set<number>();
-              const matches = Array.from(content.matchAll(/\[(\d+)\]/g));
-              for (const match of matches) {
-                usedCitations.add(parseInt(match[1]));
-              }
-              if (usedCitations.size > 0) {
-                citationMap = {};
-                const citationNums = Array.from(usedCitations);
-                for (const citNum of citationNums) {
-                  const citation = researchCitations[citNum - 1]; // citations are 1-indexed in content
-                  if (citation) {
-                    citationMap[citNum] = citation.url;
-                  }
-                }
-              }
-            }
-
-            await storage.updateLesson(lessonId, {
-              content,
-              citationMap: citationMap ? JSON.stringify(citationMap) : null,
-            });
-            console.log(`Generated content for lesson ${lessonId}`);
-
-            // Fire and forget audio generation
-            generateLessonAudio(lessonId);
-          } catch (error) {
-            console.error(`Error generating lesson ${lessonId}:`, error);
-          }
-        })();
-
-        return;
       }
 
       res.json({
@@ -926,6 +934,12 @@ Just write the lesson content and further reading, no meta text or preamble.`,
       }
 
       const progress = await storage.markLessonComplete(userId, lessonId, lesson.courseId);
+
+      // Trigger generation of next lesson in background (fire and forget)
+      const nextLesson = await storage.getNextLesson(lesson.courseId, lesson.sessionNumber);
+      if (nextLesson && (nextLesson.content === "PENDING_GENERATION" || nextLesson.content === "Content will be generated when you reach this lesson.")) {
+        generateNextLesson(nextLesson.id, lesson.courseId);
+      }
 
       // Check if course is completed
       const completedCount = await storage.getCompletedLessonsCount(userId, lesson.courseId);

@@ -172,32 +172,16 @@ export default function NewCoursePage() {
       
       const updatedHistory = conversationHistory + `\nUser: ${userInput}`;
       setConversationHistory(updatedHistory);
-      
-      setMessages(prev => [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: "Let me think about that...",
-        },
-      ]);
+
       previewMutation.mutate({ 
         topic: originalTopic || userInput, 
         conversationHistory: updatedHistory 
       });
     } else {
-      setMessages(prev => [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: "Got it! Let me revise the outline...",
-        },
-      ]);
-      previewMutation.mutate({ 
-        topic: originalTopic, 
-        feedback: userInput, 
-        previousOutline: currentOutline 
+      previewMutation.mutate({
+        topic: originalTopic,
+        feedback: userInput,
+        previousOutline: currentOutline
       });
     }
   };

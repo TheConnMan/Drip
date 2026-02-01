@@ -3,11 +3,66 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { isAuthenticated } from "./replit_integrations/auth";
 import Anthropic from "@anthropic-ai/sdk";
+import { performDeepResearch, formatResearchForPrompt, PerplexityError } from "./perplexity";
 
 const anthropic = new Anthropic({
   apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY,
   baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL,
 });
+
+// Track in-progress research jobs
+const researchJobs = new Map<number, Promise<void>>();
+
+/**
+ * Starts async research for a course
+ */
+async function startAsyncResearch(courseId: number, outline: any): Promise<void> {
+  // Check if already running
+  if (researchJobs.has(courseId)) {
+    return researchJobs.get(courseId);
+  }
+
+  const job = (async () => {
+    try {
+      console.log(`Starting deep research for course ${courseId}`);
+
+      // Update status to in_progress
+      await storage.updateResearchStatus(courseId, "in_progress");
+
+      // Perform deep research
+      const result = await performDeepResearch({
+        topic: outline.title,
+        courseTitle: outline.title,
+        courseDescription: outline.description,
+        sessionTitles: outline.sessions.map((s: any) => s.title),
+      });
+
+      // Save research content
+      await storage.updateResearchContent(
+        courseId,
+        result.content,
+        result.citations,
+        result.searchCount,
+        result.tokenCount
+      );
+
+      console.log(`Research completed for course ${courseId}: ${result.citations.length} citations`);
+    } catch (error) {
+      console.error(`Research failed for course ${courseId}:`, error);
+
+      const errorMessage = error instanceof PerplexityError
+        ? error.message
+        : "Research failed unexpectedly";
+
+      await storage.updateResearchStatus(courseId, "failed", errorMessage);
+    } finally {
+      researchJobs.delete(courseId);
+    }
+  })();
+
+  researchJobs.set(courseId, job);
+  return job;
+}
 
 export async function registerRoutes(
   httpServer: Server,
@@ -45,15 +100,65 @@ export async function registerRoutes(
       const progress = await storage.getProgressByCourse(userId, courseId);
       const completedLessons = await storage.getCompletedLessonsCount(userId, courseId);
 
+      // Get research status
+      const research = await storage.getResearchByCourse(courseId);
+
       res.json({
         ...course,
         lessons,
         progress,
         completedLessons,
+        research: research ? {
+          status: research.status,
+          citationCount: research.citations?.length || 0,
+          error: research.error,
+        } : null,
       });
     } catch (error) {
       console.error("Error fetching course:", error);
       res.status(500).json({ error: "Failed to fetch course" });
+    }
+  });
+
+  // Get research status for a course
+  app.get("/api/courses/:id/research", isAuthenticated, async (req: any, res) => {
+    try {
+      const courseId = parseInt(req.params.id);
+      const userId = req.user.claims.sub;
+
+      const course = await storage.getCourse(courseId);
+      if (!course) {
+        return res.status(404).json({ error: "Course not found" });
+      }
+
+      if (course.userId !== userId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      const research = await storage.getResearchByCourse(courseId);
+      if (!research) {
+        return res.status(404).json({ error: "Research not found" });
+      }
+
+      // Calculate confidence based on citation count
+      const citationCount = research.citations?.length || 0;
+      let confidence: "high" | "medium" | "low" | "none" = "none";
+      if (citationCount >= 15) confidence = "high";
+      else if (citationCount >= 8) confidence = "medium";
+      else if (citationCount >= 3) confidence = "low";
+
+      res.json({
+        status: research.status,
+        citationCount,
+        confidence,
+        error: research.error,
+        // Only include full content if completed
+        content: research.status === "completed" ? research.content : undefined,
+        citations: research.status === "completed" ? research.citations : undefined,
+      });
+    } catch (error) {
+      console.error("Error fetching research:", error);
+      res.status(500).json({ error: "Failed to fetch research" });
     }
   });
 
@@ -222,6 +327,20 @@ Only respond with valid JSON, no other text.`;
         description: outline.description,
         totalLessons: outline.sessions.length,
         isCompleted: false,
+      });
+
+      // Create research record and start async research
+      await storage.createResearch({
+        courseId: course.id,
+        query: `Research for course: ${outline.title}`,
+        content: "",
+        citations: [],
+        status: "pending",
+      });
+
+      // Start research in background (don't await)
+      startAsyncResearch(course.id, outline).catch((error) => {
+        console.error(`Async research error for course ${course.id}:`, error);
       });
 
       // Create all lessons with placeholder content - will be generated on-demand
@@ -557,10 +676,20 @@ Just write the lesson content, no meta text or introductions.`,
               console.log(`Lesson ${lessonId} already generated, skipping`);
               return;
             }
-            
+
+            // Fetch research context if available
+            const research = await storage.getResearchByCourse(lesson.courseId);
+            let researchContext = "";
+            if (research && research.status === "completed" && research.content) {
+              researchContext = `\n\n${formatResearchForPrompt(research.content, research.citations || [])}
+
+IMPORTANT: Draw facts, statistics, and examples from the research context above. Cite sources using [1], [2], etc. matching the available citations. Aim for 2-4 citations per lesson where relevant.
+`;
+            }
+
             const allFeedback = await storage.getFeedbackByCourse(lesson.courseId);
             const recentFeedback = allFeedback.slice(-3).map(f => f.feedback).join("\n- ");
-            
+
             let feedbackContext = "";
             if (recentFeedback) {
               feedbackContext = `\n\nThe learner has provided this feedback on previous lessons that you should incorporate:\n- ${recentFeedback}`;
@@ -574,7 +703,7 @@ Just write the lesson content, no meta text or introductions.`,
                   role: "user",
                   content: `Write a 5-minute educational lesson for: "${lesson.title}"
 This is part of a course on: "${course?.title}"
-Session ${lesson.sessionNumber} of ${course?.totalLessons}.${feedbackContext}
+Session ${lesson.sessionNumber} of ${course?.totalLessons}.${feedbackContext}${researchContext}
 
 Write professional, well-researched educational content that:
 - Is written at a high school reading level (clear and accessible)
@@ -583,25 +712,26 @@ Write professional, well-researched educational content that:
 - Is informative and professional in tone
 - Is approximately 500-700 words
 - Presents accurate, factual information
+${research?.status === "completed" ? "- Uses citations from the research context where relevant (e.g., [1], [2])" : ""}
 
 At the end of the lesson, include a "Further Reading" section with 2-3 credible references. Format like:
 **Further Reading**
 - [Title of resource] by Author/Organization - Brief description of what this covers
 - [Title of resource] by Author/Organization - Brief description
 
-Use real, well-known sources (books, academic institutions, reputable organizations, established publications). Do not invent fake sources.
+${research?.status === "completed" ? "You may use sources from the research citations above or other real, well-known sources." : "Use real, well-known sources (books, academic institutions, reputable organizations, established publications). Do not invent fake sources."}
 
 Just write the lesson content and further reading, no meta text or preamble.`,
                 },
               ],
             });
 
-            const content = contentResponse.content[0].type === "text" 
-              ? contentResponse.content[0].text 
+            const content = contentResponse.content[0].type === "text"
+              ? contentResponse.content[0].text
               : "";
 
             await storage.updateLesson(lessonId, { content });
-            console.log(`Generated content for lesson ${lessonId}`);
+            console.log(`Generated content for lesson ${lessonId}${research?.status === "completed" ? " (with research context)" : ""}`);
           } catch (error) {
             console.error(`Error generating lesson ${lessonId}:`, error);
           }

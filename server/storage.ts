@@ -1,9 +1,10 @@
 import { db } from "./db";
-import { 
-  courses, lessons, lessonProgress, topicExpansions, lessonFeedback,
+import {
+  courses, lessons, lessonProgress, topicExpansions, lessonFeedback, courseResearch,
   type Course, type InsertCourse, type Lesson, type InsertLesson,
   type LessonProgress, type InsertLessonProgress, type TopicExpansion, type InsertTopicExpansion,
-  type LessonFeedback, type InsertLessonFeedback
+  type LessonFeedback, type InsertLessonFeedback, type CourseResearch, type InsertCourseResearch,
+  type Citation
 } from "@shared/schema";
 import { eq, and, desc, asc, sql } from "drizzle-orm";
 
@@ -37,6 +38,12 @@ export interface IStorage {
   // Feedback
   getFeedbackByCourse(courseId: number): Promise<LessonFeedback[]>;
   createFeedback(feedback: InsertLessonFeedback): Promise<LessonFeedback>;
+
+  // Research
+  getResearchByCourse(courseId: number): Promise<CourseResearch | undefined>;
+  createResearch(research: InsertCourseResearch): Promise<CourseResearch>;
+  updateResearchStatus(courseId: number, status: string, error?: string): Promise<CourseResearch | undefined>;
+  updateResearchContent(courseId: number, content: string, citations: Citation[], searchCount: number, tokenCount: number): Promise<CourseResearch | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -236,6 +243,50 @@ export class DatabaseStorage implements IStorage {
   async createFeedback(feedback: InsertLessonFeedback): Promise<LessonFeedback> {
     const [newFeedback] = await db.insert(lessonFeedback).values(feedback).returning();
     return newFeedback;
+  }
+
+  // Research
+  async getResearchByCourse(courseId: number): Promise<CourseResearch | undefined> {
+    const [research] = await db
+      .select()
+      .from(courseResearch)
+      .where(eq(courseResearch.courseId, courseId));
+    return research;
+  }
+
+  async createResearch(research: InsertCourseResearch): Promise<CourseResearch> {
+    const [newResearch] = await db.insert(courseResearch).values(research).returning();
+    return newResearch;
+  }
+
+  async updateResearchStatus(courseId: number, status: string, error?: string): Promise<CourseResearch | undefined> {
+    const [updated] = await db
+      .update(courseResearch)
+      .set({ status, error: error || null })
+      .where(eq(courseResearch.courseId, courseId))
+      .returning();
+    return updated;
+  }
+
+  async updateResearchContent(
+    courseId: number,
+    content: string,
+    citations: Citation[],
+    searchCount: number,
+    tokenCount: number
+  ): Promise<CourseResearch | undefined> {
+    const [updated] = await db
+      .update(courseResearch)
+      .set({
+        content,
+        citations,
+        searchCount,
+        tokenCount,
+        status: "completed",
+      })
+      .where(eq(courseResearch.courseId, courseId))
+      .returning();
+    return updated;
   }
 }
 

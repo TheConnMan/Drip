@@ -1,7 +1,16 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, serial, integer, timestamp, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, serial, integer, timestamp, boolean, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+
+// Citation type for research documents
+export interface Citation {
+  index: number;
+  title: string;
+  url: string;
+  domain: string;
+  snippet: string;
+}
 
 export * from "./models/auth";
 
@@ -60,6 +69,21 @@ export const topicExpansions = pgTable("topic_expansions", {
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
+// Course research from Perplexity deep research
+// Stores comprehensive research document with citations for grounding lesson content
+export const courseResearch = pgTable("course_research", {
+  id: serial("id").primaryKey(),
+  courseId: integer("course_id").notNull().references(() => courses.id, { onDelete: "cascade" }),
+  query: text("query").notNull(), // The query sent to Perplexity
+  content: text("content").notNull(), // Full research response text
+  citations: jsonb("citations").$type<Citation[]>().default([]), // Array of citation objects
+  searchCount: integer("search_count"), // Number of searches Perplexity performed
+  tokenCount: integer("token_count"), // Response token count
+  status: varchar("status", { length: 20 }).default("pending").notNull(), // pending, in_progress, completed, failed
+  error: text("error"), // Error message if failed
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
 // Insert schemas
 export const insertCourseSchema = createInsertSchema(courses).omit({
   id: true,
@@ -86,6 +110,11 @@ export const insertLessonFeedbackSchema = createInsertSchema(lessonFeedback).omi
   createdAt: true,
 });
 
+export const insertCourseResearchSchema = createInsertSchema(courseResearch).omit({
+  id: true,
+  createdAt: true,
+});
+
 // Types
 export type Course = typeof courses.$inferSelect;
 export type InsertCourse = z.infer<typeof insertCourseSchema>;
@@ -97,3 +126,5 @@ export type TopicExpansion = typeof topicExpansions.$inferSelect;
 export type InsertTopicExpansion = z.infer<typeof insertTopicExpansionSchema>;
 export type LessonFeedback = typeof lessonFeedback.$inferSelect;
 export type InsertLessonFeedback = z.infer<typeof insertLessonFeedbackSchema>;
+export type CourseResearch = typeof courseResearch.$inferSelect;
+export type InsertCourseResearch = z.infer<typeof insertCourseResearchSchema>;

@@ -175,7 +175,11 @@
   .prose-lesson li {
     @apply mb-2;
   }
-  
+
+  .prose-lesson a {
+    @apply text-primary underline hover:text-primary/80;
+  }
+
   .prose-lesson blockquote {
     @apply border-l-4 border-primary/50 pl-4 italic text-muted-foreground my-4;
   }

@@ -125,12 +125,12 @@ Write professional, well-researched educational content that:
 - Is approximately 500-700 words
 - Presents accurate, factual information
 
-At the end of the lesson, include a "Further Reading" section with 2-3 credible references. Format like:
+At the end of the lesson, include a "Further Reading" section with 2-3 credible references as markdown links:
 **Further Reading**
-- [Title of resource] by Author/Organization - Brief description of what this covers
-- [Title of resource] by Author/Organization - Brief description
+- [Title of resource](https://actual-url.com) - Brief description of what this covers
+- [Title of resource](https://actual-url.com) - Brief description
 
-Use real, well-known sources (books, academic institutions, reputable organizations, established publications). Do not invent fake sources.
+Use real, well-known sources (books, academic institutions, reputable organizations, established publications). Do not invent fake sources. Include actual URLs to the resources.
 
 Just write the lesson content and further reading, no meta text or preamble.`,
         },
@@ -188,7 +188,9 @@ async function generateLessonAudio(lessonId: number): Promise<void> {
     if (!lesson || !lesson.content || lesson.audioStorageKey) return;
     if (lesson.content === "PENDING_GENERATION") return;
 
-    const plainText = stripMarkdown(lesson.content);
+    // Remove Further Reading section before TTS (links don't work in audio)
+    const contentForAudio = lesson.content.replace(/\*\*Further Reading\*\*[\s\S]*$/, '').trim();
+    const plainText = stripMarkdown(contentForAudio);
     const { audioBuffer, durationSeconds } = await generateSpeech(plainText);
 
     const storageKey = `audio/lesson-${lessonId}.mp3`;
@@ -604,12 +606,12 @@ Write professional, well-researched educational content that:
 - Is approximately 500-700 words
 - Presents accurate, factual information
 
-At the end of the lesson, include a "Further Reading" section with 2-3 credible references. Format like:
+At the end of the lesson, include a "Further Reading" section with 2-3 credible references as markdown links:
 **Further Reading**
-- [Title of resource] by Author/Organization - Brief description of what this covers
-- [Title of resource] by Author/Organization - Brief description
+- [Title of resource](https://actual-url.com) - Brief description of what this covers
+- [Title of resource](https://actual-url.com) - Brief description
 
-Use real, well-known sources (books, academic institutions, reputable organizations, established publications). Do not invent fake sources.
+Use real, well-known sources (books, academic institutions, reputable organizations, established publications). Do not invent fake sources. Include actual URLs to the resources.
 
 Just write the lesson content and further reading, no meta text or preamble.`,
                 },

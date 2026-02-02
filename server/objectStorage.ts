@@ -121,17 +121,9 @@ export async function uploadImage(key: string, buffer: Buffer): Promise<string> 
 }
 
 export async function getImagePublicUrl(key: string): Promise<string> {
-  if (useLocalStorage) {
-    // For local development, serve via the /image endpoint
-    return `/image/${encodeURIComponent(key)}`;
-  }
-
-  const { bucketName, prefix } = getPublicPath();
-  const objectPath = prefix ? `${prefix}/${key}` : key;
-
-  // Construct the public URL for Replit Object Storage
-  // Format: https://storage.googleapis.com/{bucket}/{path}
-  return `https://storage.googleapis.com/${bucketName}/${objectPath}`;
+  // Serve all images through the /image endpoint proxy
+  // Direct GCS URLs return 403 for Replit Object Storage
+  return `/image/${encodeURIComponent(key)}`;
 }
 
 export async function downloadImage(key: string): Promise<Buffer> {

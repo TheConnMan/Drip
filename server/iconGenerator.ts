@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { uploadImage, getImagePublicUrl } from "./objectStorage";
+import { storage } from "./storage";
 
 const anthropic = new Anthropic({
   apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY,
@@ -23,7 +24,7 @@ Minimalist icon of a [SYMBOL], single simple shape, teal/cyan outline on dark ch
  */
 async function generateImagePrompt(title: string, description: string): Promise<string> {
   const response = await anthropic.messages.create({
-    model: "claude-3-5-haiku-20241022",
+    model: "claude-haiku-4-5-20251001",
     max_tokens: 150,
     system: ICON_PROMPT_SYSTEM,
     messages: [
@@ -154,4 +155,42 @@ export async function generateCourseIconSafe(
     console.error(`[icon-generator] Failed to generate icon for course ${courseId}:`, error);
     return null;
   }
+}
+
+/**
+ * Backfills icons for all courses that don't have one
+ * Runs in background and processes courses sequentially to avoid rate limits
+ */
+export async function backfillCourseIcons(): Promise<void> {
+  const coursesWithoutIcons = await storage.getCoursesWithoutIcons();
+
+  if (coursesWithoutIcons.length === 0) {
+    console.log("[icon-generator] No courses need icon backfill");
+    return;
+  }
+
+  console.log(`[icon-generator] Starting backfill for ${coursesWithoutIcons.length} courses`);
+
+  for (const course of coursesWithoutIcons) {
+    console.log(`[icon-generator] Backfilling icon for course ${course.id}: ${course.title}`);
+
+    const result = await generateCourseIconSafe(
+      course.id,
+      course.title,
+      course.description || ""
+    );
+
+    if (result) {
+      await storage.updateCourse(course.id, {
+        iconUrl: result.iconUrl,
+        iconGeneratedAt: result.iconGeneratedAt,
+      });
+      console.log(`[icon-generator] Backfill complete for course ${course.id}`);
+    }
+
+    // Small delay between generations to avoid rate limits
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+
+  console.log("[icon-generator] Backfill complete");
 }

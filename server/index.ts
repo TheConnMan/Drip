@@ -5,6 +5,7 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth";
 import { ensureSchemaSync } from "./db";
+import { backfillCourseIcons } from "./iconGenerator";
 
 const app = express();
 const httpServer = createServer(app);
@@ -101,6 +102,11 @@ app.use((req, res, next) => {
     },
     () => {
       log(`serving on port ${port}`);
+
+      // Backfill course icons in the background
+      backfillCourseIcons().catch((error) => {
+        console.error("[startup] Failed to backfill course icons:", error);
+      });
     },
   );
 })();

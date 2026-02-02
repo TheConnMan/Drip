@@ -154,6 +154,26 @@ export async function downloadImage(key: string): Promise<Buffer> {
   return contents;
 }
 
+export async function imageExists(key: string): Promise<boolean> {
+  if (useLocalStorage) {
+    const filePath = path.join(LOCAL_STORAGE_DIR, key.replace(/\//g, "_"));
+    try {
+      await fs.access(filePath);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  const { bucketName, prefix } = getPublicPath();
+  const bucket = objectStorageClient.bucket(bucketName);
+  const objectPath = prefix ? `${prefix}/${key}` : key;
+  const file = bucket.file(objectPath);
+
+  const [exists] = await file.exists();
+  return exists;
+}
+
 export async function deleteImage(key: string): Promise<void> {
   if (useLocalStorage) {
     const filePath = path.join(LOCAL_STORAGE_DIR, key.replace(/\//g, "_"));

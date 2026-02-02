@@ -5,7 +5,7 @@ import {
   type LessonProgress, type InsertLessonProgress,
   type LessonFeedback, type InsertLessonFeedback, type CourseResearch, type InsertCourseResearch
 } from "@shared/schema";
-import { eq, and, desc, asc, sql, isNotNull, isNull } from "drizzle-orm";
+import { eq, and, desc, asc, sql, isNotNull } from "drizzle-orm";
 
 export interface IStorage {
   // Courses
@@ -17,7 +17,7 @@ export interface IStorage {
   deleteCourse(id: number): Promise<void>;
   archiveCourse(id: number): Promise<Course | undefined>;
   unarchiveCourse(id: number): Promise<Course | undefined>;
-  getCoursesWithoutIcons(): Promise<Course[]>;
+  getAllCourses(): Promise<Course[]>;
   
   // Lessons
   getLesson(id: number): Promise<Lesson | undefined>;
@@ -111,11 +111,10 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async getCoursesWithoutIcons(): Promise<Course[]> {
+  async getAllCourses(): Promise<Course[]> {
     return db
       .select()
       .from(courses)
-      .where(isNull(courses.iconUrl))
       .orderBy(asc(courses.createdAt));
   }
 

@@ -195,9 +195,9 @@ export default function CoursePage() {
       <main className="container mx-auto px-4 py-6 max-w-2xl">
         {/* Course Icon Header */}
         <div className="flex flex-col items-center mb-6">
-          {course.iconUrl ? (
+          {course.rssFeedUuid ? (
             <img
-              src={course.iconUrl}
+              src={`/icon/${course.rssFeedUuid}.png`}
               alt={`${course.title} icon`}
               className="w-24 h-24 rounded-xl object-cover mb-3"
               onError={(e) => {

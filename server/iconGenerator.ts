@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { uploadImage, getImagePublicUrl } from "./objectStorage";
+import { uploadImage, imageExists } from "./objectStorage";
 import { storage } from "./storage";
 
 const anthropic = new Anthropic({
@@ -102,89 +102,84 @@ async function generateImage(prompt: string): Promise<Buffer> {
   }
 }
 
-export interface IconGenerationResult {
-  iconUrl: string;
-  iconGeneratedAt: Date;
-}
-
 /**
  * Generates a course icon and uploads it to storage
- * Returns the public URL of the icon
+ * Icon is served via /icon/:uuid.png endpoint using course rssFeedUuid
  */
 export async function generateCourseIcon(
   courseId: number,
   title: string,
   description: string
-): Promise<IconGenerationResult> {
+): Promise<void> {
   console.log(`[icon-generator] Starting icon generation for course ${courseId}`);
 
   // Step 1: Generate the image prompt using Claude
   const imagePrompt = await generateImagePrompt(title, description || title);
   console.log(`[icon-generator] Generated prompt: ${imagePrompt.substring(0, 100)}...`);
 
-  // Step 2: Generate the image using GPT Image 1
+  // Step 2: Generate the image using DALL-E 3
   const imageBuffer = await generateImage(imagePrompt);
   console.log(`[icon-generator] Generated image: ${imageBuffer.length} bytes`);
 
   // Step 3: Upload to object storage
   const storageKey = `courses/${courseId}/icon.png`;
   await uploadImage(storageKey, imageBuffer);
-  console.log(`[icon-generator] Uploaded to ${storageKey}`);
-
-  // Step 4: Get the public URL
-  const iconUrl = await getImagePublicUrl(storageKey);
-  const iconGeneratedAt = new Date();
-
-  console.log(`[icon-generator] Icon ready at ${iconUrl}`);
-
-  return { iconUrl, iconGeneratedAt };
+  console.log(`[icon-generator] Icon ready for course ${courseId}`);
 }
 
 /**
- * Safely generates a course icon, returning null on failure
- * Does not throw - logs errors and returns null
+ * Safely generates a course icon, returning success/failure
+ * Does not throw - logs errors and returns false
  */
 export async function generateCourseIconSafe(
   courseId: number,
   title: string,
   description: string
-): Promise<IconGenerationResult | null> {
+): Promise<boolean> {
   try {
-    return await generateCourseIcon(courseId, title, description);
+    await generateCourseIcon(courseId, title, description);
+    return true;
   } catch (error) {
     console.error(`[icon-generator] Failed to generate icon for course ${courseId}:`, error);
-    return null;
+    return false;
   }
 }
 
 /**
  * Backfills icons for all courses that don't have one
+ * Checks file existence in storage rather than DB column
  * Runs in background and processes courses sequentially to avoid rate limits
  */
 export async function backfillCourseIcons(): Promise<void> {
-  const coursesWithoutIcons = await storage.getCoursesWithoutIcons();
+  const allCourses = await storage.getAllCourses();
 
-  if (coursesWithoutIcons.length === 0) {
+  // Filter to courses that don't have icons in storage
+  const coursesNeedingIcons = [];
+  for (const course of allCourses) {
+    const storageKey = `courses/${course.id}/icon.png`;
+    const hasIcon = await imageExists(storageKey);
+    if (!hasIcon) {
+      coursesNeedingIcons.push(course);
+    }
+  }
+
+  if (coursesNeedingIcons.length === 0) {
     console.log("[icon-generator] No courses need icon backfill");
     return;
   }
 
-  console.log(`[icon-generator] Starting backfill for ${coursesWithoutIcons.length} courses`);
+  console.log(`[icon-generator] Starting backfill for ${coursesNeedingIcons.length} courses`);
 
-  for (const course of coursesWithoutIcons) {
+  for (const course of coursesNeedingIcons) {
     console.log(`[icon-generator] Backfilling icon for course ${course.id}: ${course.title}`);
 
-    const result = await generateCourseIconSafe(
+    const success = await generateCourseIconSafe(
       course.id,
       course.title,
       course.description || ""
     );
 
-    if (result) {
-      await storage.updateCourse(course.id, {
-        iconUrl: result.iconUrl,
-        iconGeneratedAt: result.iconGeneratedAt,
-      });
+    if (success) {
       console.log(`[icon-generator] Backfill complete for course ${course.id}`);
     }
 

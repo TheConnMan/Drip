@@ -225,11 +225,11 @@ export default function Home() {
   );
 }
 
-function CourseIcon({ iconUrl, size = 48 }: { iconUrl?: string | null; size?: number }) {
-  if (iconUrl) {
+function CourseIcon({ rssFeedUuid, size = 48 }: { rssFeedUuid?: string | null; size?: number }) {
+  if (rssFeedUuid) {
     return (
       <img
-        src={iconUrl}
+        src={`/icon/${rssFeedUuid}.png`}
         alt="Course icon"
         className="rounded-lg object-cover flex-shrink-0"
         style={{ width: size, height: size }}
@@ -278,7 +278,7 @@ function CourseCard({
     >
       <div className="flex items-start justify-between gap-3 w-full">
         <Link href={`/course/${course.id}`} className="flex items-start gap-4 flex-1 min-w-0 hover-elevate rounded-md -m-2 p-2 overflow-hidden">
-          <CourseIcon iconUrl={course.iconUrl} size={48} />
+          <CourseIcon rssFeedUuid={course.rssFeedUuid} size={48} />
           <div className="flex-1 min-w-0">
             <h3 className="font-semibold text-lg mb-1 break-words" data-testid={`text-course-title-${course.id}`}>
               {course.title}

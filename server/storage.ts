@@ -115,7 +115,7 @@ export class DatabaseStorage implements IStorage {
     return db
       .select()
       .from(courses)
-      .where(isNull(courses.iconUrl))
+      .where(isNull(courses.iconGeneratedAt))
       .orderBy(asc(courses.createdAt));
   }
 

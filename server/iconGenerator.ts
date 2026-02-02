@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { uploadImage, getImagePublicUrl } from "./objectStorage";
+import { uploadImage } from "./objectStorage";
 import { storage } from "./storage";
 
 const anthropic = new Anthropic({
@@ -103,13 +103,12 @@ async function generateImage(prompt: string): Promise<Buffer> {
 }
 
 export interface IconGenerationResult {
-  iconUrl: string;
   iconGeneratedAt: Date;
 }
 
 /**
  * Generates a course icon and uploads it to storage
- * Returns the public URL of the icon
+ * Icon is served via /icon/:uuid.png endpoint using course rssFeedUuid
  */
 export async function generateCourseIcon(
   courseId: number,
@@ -122,7 +121,7 @@ export async function generateCourseIcon(
   const imagePrompt = await generateImagePrompt(title, description || title);
   console.log(`[icon-generator] Generated prompt: ${imagePrompt.substring(0, 100)}...`);
 
-  // Step 2: Generate the image using GPT Image 1
+  // Step 2: Generate the image using DALL-E 3
   const imageBuffer = await generateImage(imagePrompt);
   console.log(`[icon-generator] Generated image: ${imageBuffer.length} bytes`);
 
@@ -131,13 +130,10 @@ export async function generateCourseIcon(
   await uploadImage(storageKey, imageBuffer);
   console.log(`[icon-generator] Uploaded to ${storageKey}`);
 
-  // Step 4: Get the public URL
-  const iconUrl = await getImagePublicUrl(storageKey);
   const iconGeneratedAt = new Date();
+  console.log(`[icon-generator] Icon ready for course ${courseId}`);
 
-  console.log(`[icon-generator] Icon ready at ${iconUrl}`);
-
-  return { iconUrl, iconGeneratedAt };
+  return { iconGeneratedAt };
 }
 
 /**
@@ -182,7 +178,6 @@ export async function backfillCourseIcons(): Promise<void> {
 
     if (result) {
       await storage.updateCourse(course.id, {
-        iconUrl: result.iconUrl,
         iconGeneratedAt: result.iconGeneratedAt,
       });
       console.log(`[icon-generator] Backfill complete for course ${course.id}`);

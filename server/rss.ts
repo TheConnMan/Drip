@@ -47,13 +47,11 @@ export function generateRssFeed(course: Course, lessons: Lesson[], baseUrl: stri
   const courseDescription = course.description || `Learn about ${course.title}`;
   const courseLink = `${baseUrl}/course/${course.id}`;
 
-  // Generate image tags if icon is available
+  // Generate image tags using absolute URL with course UUID
   let imageTag = "";
   let itunesImageTag = "";
-  if (course.iconUrl) {
-    const iconUrl = course.iconUrl.startsWith("/")
-      ? `${baseUrl}${course.iconUrl}`
-      : course.iconUrl;
+  if (course.rssFeedUuid) {
+    const iconUrl = `${baseUrl}/icon/${course.rssFeedUuid}.png`;
     imageTag = `    <image>
       <url>${escapeXml(iconUrl)}</url>
       <title>${escapeXml(course.title)}</title>

@@ -278,6 +278,29 @@ export async function registerRoutes(
     }
   });
 
+  // Course icon by UUID (public, unauthenticated)
+  app.get("/icon/:uuid.png", async (req, res) => {
+    try {
+      const { uuid } = req.params;
+      const course = await storage.getCourseByRssFeedUuid(uuid);
+
+      if (!course) {
+        return res.status(404).send("Course not found");
+      }
+
+      const storageKey = `courses/${course.id}/icon.png`;
+      const imageBuffer = await downloadImage(storageKey);
+
+      res.set("Content-Type", "image/png");
+      res.set("Content-Length", imageBuffer.length.toString());
+      res.set("Cache-Control", "public, max-age=31536000");
+      res.send(imageBuffer);
+    } catch (error) {
+      console.error("Error serving course icon:", error);
+      res.status(404).send("Icon not found");
+    }
+  });
+
   // AUTHENTICATED ROUTES
 
   // Get all courses for current user
@@ -528,10 +551,9 @@ Only respond with valid JSON, no other text.`;
           );
           if (iconResult) {
             await storage.updateCourse(courseId, {
-              iconUrl: iconResult.iconUrl,
               iconGeneratedAt: iconResult.iconGeneratedAt,
             });
-            console.log(`Icon generated for course ${courseId}: ${iconResult.iconUrl}`);
+            console.log(`Icon generated for course ${courseId}`);
           }
         })();
 

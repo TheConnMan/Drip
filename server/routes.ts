@@ -544,15 +544,12 @@ Only respond with valid JSON, no other text.`;
 
         // Fire and forget icon generation (runs in parallel with research)
         (async () => {
-          const iconResult = await generateCourseIconSafe(
+          const success = await generateCourseIconSafe(
             courseId,
             outline.title,
             outline.description || outline.title
           );
-          if (iconResult) {
-            await storage.updateCourse(courseId, {
-              iconGeneratedAt: iconResult.iconGeneratedAt,
-            });
+          if (success) {
             console.log(`Icon generated for course ${courseId}`);
           }
         })();
